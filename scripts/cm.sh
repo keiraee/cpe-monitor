@@ -11,7 +11,7 @@ set -e
 REPO="keiraee/cpe-monitor"
 BRANCH="master"
 BASE_URL="https://raw.githubusercontent.com/$REPO/$BRANCH"
-VERSION="1.0.1"
+VERSION="1.0.2"
 
 CGI_DIR="/www/cgi-bin"
 HTML_DIR="/www/cmonitor"
