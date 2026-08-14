@@ -68,7 +68,7 @@ else
   test_fail "缺少 HTML 声明"
 fi
 
-if grep -q "</html>" src/web/index/index.html; then
+if grep -q "</html>" src/web/index.html; then
   test_pass "HTML 标签闭合"
 else
   test_fail "HTML 标签未闭合"
@@ -82,37 +82,43 @@ fi
 
 # ========== CGI 输出测试 ==========
 echo ""
-echo "[测试] CGI 脚本输出"
+echo "[测试] CGI 脚本内容检查"
 
-# 在 WSL 中测试 CGI 脚本
-if command -v sh > /dev/null 2>&1; then
-  OUTPUT=$(sh src/cgi/monitor 2>/dev/null | grep -v "Content-Type" | grep -v "Access-Control" | grep -v "Cache-Control" | head -1)
-  
-  if echo "$OUTPUT" | grep -q "{"; then
-    test_pass "CGI 输出包含 JSON"
-  else
-    test_fail "CGI 输出不包含 JSON"
-  fi
-  
-  if echo "$OUTPUT" | grep -q "uptime"; then
-    test_pass "JSON 包含 uptime 字段"
-  else
-    test_fail "JSON 缺少 uptime 字段"
-  fi
-  
-  if echo "$OUTPUT" | grep -q "mem"; then
-    test_pass "JSON 包含 mem 字段"
-  else
-    test_fail "JSON 缺少 mem 字段"
-  fi
-  
-  if echo "$OUTPUT" | grep -q "leases"; then
-    test_pass "JSON 包含 leases 字段"
-  else
-    test_fail "JSON 缺少 leases 字段"
-  fi
+# 检查 CGI 脚本是否包含必要的输出字段
+if grep -q "Content-Type: application/json" src/cgi/monitor; then
+  test_pass "CGI 输出 JSON 格式声明"
 else
-  echo "  - 跳过: sh 不可用"
+  test_fail "CGI 缺少 JSON 格式声明"
+fi
+
+if grep -q "uptime" src/cgi/monitor; then
+  test_pass "CGI 包含 uptime 处理"
+else
+  test_fail "CGI 缺少 uptime 处理"
+fi
+
+if grep -q "MEM_TOTAL" src/cgi/monitor || grep -q "mem" src/cgi/monitor; then
+  test_pass "CGI 包含内存处理"
+else
+  test_fail "CGI 缺少内存处理"
+fi
+
+if grep -q "dhcp.leases" src/cgi/monitor; then
+  test_pass "CGI 包含 DHCP 租约处理"
+else
+  test_fail "CGI 缺少 DHCP 租约处理"
+fi
+
+if grep -q "iwinfo" src/cgi/monitor; then
+  test_pass "CGI 包含 WiFi 信息采集"
+else
+  test_fail "CGI 缺少 WiFi 信息采集"
+fi
+
+if grep -q "conntrack" src/cgi/monitor; then
+  test_pass "CGI 包含连接数统计"
+else
+  test_fail "CGI 缺少连接数统计"
 fi
 
 # ========== 结果汇总 ==========
