@@ -25,18 +25,18 @@ echo "  ✓ 设备可达"
 
 # 创建目录
 echo "[2/4] 创建远程目录..."
-ssh "${USERNAME}@${DEVICE_IP}" "mkdir -p ${REMOTE_BASE}/admin ${REMOTE_BASE}/cgi-bin"
+ssh "${USERNAME}@${DEVICE_IP}" "mkdir -p ${REMOTE_BASE}/cmonitor ${REMOTE_BASE}/cgi-bin"
 echo "  ✓ 目录已创建"
 
 # 上传 CGI 脚本
 echo "[3/4] 上传 CGI 监控脚本..."
-scp src/cgi/monitor "${USERNAME}@${DEVICE_IP}:${REMOTE_BASE}/cgi-bin/monitor"
-ssh "${USERNAME}@${DEVICE_IP}" "chmod +x ${REMOTE_BASE}/cgi-bin/monitor"
+scp src/cgi/cmonitor "${USERNAME}@${DEVICE_IP}:${REMOTE_BASE}/cgi-bin/cmonitor"
+ssh "${USERNAME}@${DEVICE_IP}" "chmod +x ${REMOTE_BASE}/cgi-bin/cmonitor"
 echo "  ✓ CGI 脚本已部署"
 
 # 上传前端页面
 echo "[4/4] 上传前端页面..."
-scp src/web/index.html "${USERNAME}@${DEVICE_IP}:${REMOTE_BASE}/admin/index.html"
+scp src/web/index.html "${USERNAME}@${DEVICE_IP}:${REMOTE_BASE}/cmonitor/index.html"
 echo "  ✓ 前端页面已部署"
 
 echo ""
@@ -44,5 +44,5 @@ echo "=========================================="
 echo "  部署完成!"
 echo "=========================================="
 echo ""
-echo "访问地址: http://${DEVICE_IP}/admin/"
+echo "访问地址: http://${DEVICE_IP}/cmonitor/"
 echo ""

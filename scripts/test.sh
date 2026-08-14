@@ -26,7 +26,7 @@ test_fail() {
 # ========== 文件结构测试 ==========
 echo "[测试] 文件结构"
 
-if [ -f "src/cgi/monitor" ]; then
+if [ -f "src/cgi/cmonitor" ]; then
   test_pass "CGI 脚本存在"
 else
   test_fail "CGI 脚本不存在"
@@ -38,7 +38,13 @@ else
   test_fail "前端页面不存在"
 fi
 
-if [ -x "src/cgi/monitor" ]; then
+if [ -f "scripts/cm.sh" ]; then
+  test_pass "管理工具脚本存在"
+else
+  test_fail "管理工具脚本不存在"
+fi
+
+if [ -x "src/cgi/cmonitor" ]; then
   test_pass "CGI 脚本可执行"
 else
   test_fail "CGI 脚本不可执行 (需要 chmod +x)"
@@ -49,10 +55,15 @@ echo ""
 echo "[测试] Shell 语法检查"
 
 if command -v sh > /dev/null 2>&1; then
-  if sh -n src/cgi/monitor 2>/dev/null; then
+  if sh -n src/cgi/cmonitor 2>/dev/null; then
     test_pass "CGI 脚本语法正确"
   else
     test_fail "CGI 脚本语法错误"
+  fi
+  if sh -n scripts/cm.sh 2>/dev/null; then
+    test_pass "管理工具脚本语法正确"
+  else
+    test_fail "管理工具脚本语法错误"
   fi
 else
   echo "  - 跳过: sh 不可用"
@@ -74,7 +85,7 @@ else
   test_fail "HTML 标签未闭合"
 fi
 
-if grep -q "cgi-bin/monitor" src/web/index.html; then
+if grep -q "cgi-bin/cmonitor" src/web/index.html; then
   test_pass "API 地址正确引用"
 else
   test_fail "未找到 API 地址引用"
@@ -84,41 +95,46 @@ fi
 echo ""
 echo "[测试] CGI 脚本内容检查"
 
-# 检查 CGI 脚本是否包含必要的输出字段
-if grep -q "Content-Type: application/json" src/cgi/monitor; then
+if grep -q "Content-Type: application/json" src/cgi/cmonitor; then
   test_pass "CGI 输出 JSON 格式声明"
 else
   test_fail "CGI 缺少 JSON 格式声明"
 fi
 
-if grep -q "uptime" src/cgi/monitor; then
+if grep -q "uptime" src/cgi/cmonitor; then
   test_pass "CGI 包含 uptime 处理"
 else
   test_fail "CGI 缺少 uptime 处理"
 fi
 
-if grep -q "MEM_TOTAL" src/cgi/monitor || grep -q "mem" src/cgi/monitor; then
+if grep -q "MEM_TOTAL" src/cgi/cmonitor || grep -q "mem" src/cgi/cmonitor; then
   test_pass "CGI 包含内存处理"
 else
   test_fail "CGI 缺少内存处理"
 fi
 
-if grep -q "dhcp.leases" src/cgi/monitor; then
+if grep -q "dhcp.leases" src/cgi/cmonitor; then
   test_pass "CGI 包含 DHCP 租约处理"
 else
   test_fail "CGI 缺少 DHCP 租约处理"
 fi
 
-if grep -q "iwinfo" src/cgi/monitor; then
+if grep -q "iwinfo" src/cgi/cmonitor; then
   test_pass "CGI 包含 WiFi 信息采集"
 else
   test_fail "CGI 缺少 WiFi 信息采集"
 fi
 
-if grep -q "conntrack" src/cgi/monitor; then
+if grep -q "conntrack" src/cgi/cmonitor; then
   test_pass "CGI 包含连接数统计"
 else
   test_fail "CGI 缺少连接数统计"
+fi
+
+if grep -q "ubus call network.wireless" src/cgi/cmonitor; then
+  test_pass "CGI 包含 WiFi 动态发现"
+else
+  test_fail "CGI 缺少 WiFi 动态发现"
 fi
 
 # ========== 结果汇总 ==========
