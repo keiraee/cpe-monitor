@@ -84,10 +84,13 @@ for IFACE in $WIFI_IFACES; do
   INFO_OUTPUT=$(iwinfo $IFACE info 2>/dev/null)
   [ $? -ne 0 ] && continue
   
-  ESSID=$(echo "$INFO_OUTPUT" | grep "ESSID" | sed 's/.*"\(.*\)".*/\1/')
-  CHANNEL=$(echo "$INFO_OUTPUT" | grep "Channel" | awk '{print $NF}')
-  MODE=$(echo "$INFO_OUTPUT" | grep "Mode" | awk '{print $2}')
-  TXPOWER=$(echo "$INFO_OUTPUT" | grep "Tx-Power" | awk '{print $2}')
+  ESSID=$(echo "$INFO_OUTPUT" | grep -oE 'ESSID: ".*"' | sed 's/ESSID: "//;s/"//')
+  CHANNEL=$(echo "$INFO_OUTPUT" | grep "Channel" | grep -oE '[0-9]+' | head -1)
+  [ -z "$CHANNEL" ] && CHANNEL="N/A"
+  MODE=$(echo "$INFO_OUTPUT" | grep "Mode" | awk '{print $2}' | tr -d '\r\n')
+  [ -z "$MODE" ] && MODE="N/A"
+  TXPOWER=$(echo "$INFO_OUTPUT" | grep "Tx-Power" | grep -oE '[0-9]+' | head -1)
+  [ -z "$TXPOWER" ] && TXPOWER="N/A"
   
   [ -z "$ESSID" ] && continue
   
