@@ -34,10 +34,18 @@ while read EXPIRY MAC IP HOSTNAME ID; do
   LEASES="$LEASES{\"mac\":\"$MAC\",\"ip\":\"$IP\",\"hostname\":\"$HOSTNAME\"}"
 done < /tmp/dhcp.leases 2>/dev/null
 
+# ========== WiFi 接口发现 ==========
+# 动态获取所有无线接口名，避免硬编码
+WIFI_IFACES=$(ubus call network.wireless status 2>/dev/null | jsonfilter -e '@.*.interfaces[*].ifname')
+if [ -z "$WIFI_IFACES" ]; then
+  # fallback: 从 iwinfo 输出中提取接口名
+  WIFI_IFACES=$(iwinfo 2>/dev/null | sed -n 's/^\([a-z0-9]*\)  .*/\1/p')
+fi
+
 # ========== WiFi 客户端 ==========
 WIFI_CLIENTS=""
 FIRST=1
-for IFACE in ra0 rax0 rax1; do
+for IFACE in $WIFI_IFACES; do
   # 获取关联客户端列表
   CLIENTS_OUTPUT=$(iwinfo $IFACE assoclist 2>/dev/null)
   [ $? -ne 0 ] && continue
@@ -72,7 +80,7 @@ done < /tmp/wifi_clients_raw.txt 2>/dev/null
 # ========== WiFi 网络信息 ==========
 WIFI_INFO=""
 FIRST=1
-for IFACE in ra0 rax0 rax1; do
+for IFACE in $WIFI_IFACES; do
   INFO_OUTPUT=$(iwinfo $IFACE info 2>/dev/null)
   [ $? -ne 0 ] && continue
   
