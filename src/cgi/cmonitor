@@ -131,7 +131,21 @@ if [ -f /tmp/cpe_cell.file ] && [ -s /tmp/cpe_cell.file ]; then
   L20=$(sed -n '20p' /tmp/cpe_cell.file)
   L22=$(sed -n '22p' /tmp/cpe_cell.file)
   if [ -n "$L11" ]; then
-    CELL_JSON="{\"net_type\":\"$L11\",\"quality\":\"$(echo $L12 | tr -d '%')\",\"rssi\":\"$(echo $L13 | grep -oE '[-]*[0-9]+')\",\"rsrq\":\"$(echo $L14 | grep -oE '[-]*[0-9]+')\",\"rscp\":\"$(echo $L15 | grep -oE '[-]*[0-9]+')\",\"sinr\":\"$(echo $L16 | grep -oE '[-]*[0-9]+')\",\"operator\":\"$L07\",\"mcc_mnc\":\"$L17\",\"lac\":\"$(echo $L18 | awk '{print \$1}')\",\"cellid\":\"$L19\",\"band\":\"$L20\",\"pci\":\"$L22\"}"
+    # 转义值中的双引号和反斜杠
+    j() { echo "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+    C_NET=$(j "$L11")
+    C_QUAL=$(echo "$L12" | tr -d '%')
+    C_RSSI=$(echo "$L13" | grep -oE '[-]*[0-9]+')
+    C_RSRQ=$(echo "$L14" | grep -oE '[-]*[0-9]+')
+    C_RSCP=$(echo "$L15" | grep -oE '[-]*[0-9]+')
+    C_SINR=$(echo "$L16" | grep -oE '[-]*[0-9]+')
+    C_OPR=$(j "$L07")
+    C_MCC=$(j "$L17")
+    C_LAC=$(echo "$L18" | awk '{print $1}')
+    C_CID=$(j "$L19")
+    C_BAND=$(j "$L20")
+    C_PCI=$(j "$L22")
+    CELL_JSON="{"net_type":"$C_NET","quality":"$C_QUAL","rssi":"$C_RSSI","rsrq":"$C_RSRQ","rscp":"$C_RSCP","sinr":"$C_SINR","operator":"$C_OPR","mcc_mnc":"$C_MCC","lac":"$C_LAC","cellid":"$C_CID","band":"$C_BAND","pci":"$C_PCI"}"
   fi
 fi
 
@@ -144,7 +158,7 @@ if [ "$CELL_JSON" = "{}" ]; then
       RSSI=$(( -113 + 2 * CSQ ))
       QUAL=$(( CSQ * 100 / 31 ))
       COPS=$(echo "AT+COPS?" | gcom -d "$PORT" -s /dev/stdin 2>/dev/null | grep '+COPS:' | sed 's/.*"\(.*\)".*/\1/')
-      CELL_JSON="{\"net_type\":\"蜂窝网络\",\"quality\":\"$QUAL\",\"rssi\":\"$RSSI\",\"operator\":\"$COPS\"}"
+      CELL_JSON="{"net_type":"蜂窝网络","quality":"$QUAL","rssi":"$RSSI","operator":"$COPS"}"
       break
     fi
   done
