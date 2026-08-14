@@ -43,11 +43,24 @@ if [ -z "$WIFI_IFACES" ]; then
 fi
 
 # ========== WiFi 客户端 ==========
+# 先建立 iface → essid 映射
+IFACE_ESSID_MAP="/tmp/iface_essid_map.txt"
+rm -f "$IFACE_ESSID_MAP"
+for IFACE in $WIFI_IFACES; do
+  INFO=$(iwinfo $IFACE info 2>/dev/null)
+  ESSID=$(echo "$INFO" | sed -n 's/.*ESSID: *"\(.*\)".*/\1/p')
+  [ -z "$ESSID" ] && ESSID="$IFACE"
+  echo "$IFACE $ESSID" >> "$IFACE_ESSID_MAP"
+done
+
 WIFI_CLIENTS=""
 FIRST=1
 for IFACE in $WIFI_IFACES; do
+  # 查找对应的 SSID
+  ESSID=$(grep "^$IFACE " "$IFACE_ESSID_MAP" 2>/dev/null | cut -d' ' -f2-)
+  [ -z "$ESSID" ] && ESSID="$IFACE"
   # 用 awk 解析多行 assoclist 输出，每个客户端占多行
-  iwinfo $IFACE assoclist 2>/dev/null | awk -v iface="$IFACE" '
+  iwinfo $IFACE assoclist 2>/dev/null | awk -v iface="$ESSID" '
     /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}/ {
       if (MAC != "") print MAC "|" iface "|" SIGNAL "|" RX "|" TX
       MAC = $1
@@ -76,7 +89,7 @@ while IFS='|' read MAC IFACE SIGNAL RX_RATE TX_RATE; do
 done < /tmp/wifi_clients_raw.txt 2>/dev/null
 
 # 清理临时文件
-rm -f "$HOSTNAME_MAP"
+rm -f "$HOSTNAME_MAP" "$IFACE_ESSID_MAP"
 
 # ========== WiFi 网络信息 ==========
 WIFI_INFO=""
@@ -98,6 +111,57 @@ for IFACE in $WIFI_IFACES; do
   if [ $FIRST -eq 1 ]; then FIRST=0; else WIFI_INFO="$WIFI_INFO,"; fi
   WIFI_INFO="$WIFI_INFO{\"iface\":\"$IFACE\",\"essid\":\"$ESSID\",\"channel\":\"$CHANNEL\",\"mode\":\"$MODE\",\"txpower\":\"$TXPOWER\"}"
 done
+
+
+# ========== 蜂窝网络信息 ==========
+CELL_JSON='{}'
+
+# 方法1: ubus modem 服务
+CELL_UBUS=$(ubus call modem get_signal_info 2>/dev/null || ubus call network.modem status 2>/dev/null || ubus call mobiled signal 2>/dev/null)
+if [ -n "$CELL_UBUS" ]; then
+  NET_TYPE=$(echo "$CELL_UBUS" | jsonfilter -e '@.network_type' 2>/dev/null || echo "$CELL_UBUS" | jsonfilter -e '@.type' 2>/dev/null)
+  SIG_QUAL=$(echo "$CELL_UBUS" | jsonfilter -e '@.signal_quality' 2>/dev/null || echo "$CELL_UBUS" | jsonfilter -e '@.quality' 2>/dev/null)
+  RSSI=$(echo "$CELL_UBUS" | jsonfilter -e '@.rssi' 2>/dev/null)
+  RSRQ=$(echo "$CELL_UBUS" | jsonfilter -e '@.rsrq' 2>/dev/null)
+  RSCP=$(echo "$CELL_UBUS" | jsonfilter -e '@.rscp' 2>/dev/null)
+  SINR=$(echo "$CELL_UBUS" | jsonfilter -e '@.sinr' 2>/dev/null)
+  OPERATOR=$(echo "$CELL_UBUS" | jsonfilter -e '@.operator' 2>/dev/null)
+  BAND=$(echo "$CELL_UBUS" | jsonfilter -e '@.band' 2>/dev/null)
+  PCI=$(echo "$CELL_UBUS" | jsonfilter -e '@.pci' 2>/dev/null)
+  if [ -n "$NET_TYPE" ]; then
+    CELL_JSON="{\"net_type\":\"$NET_TYPE\",\"quality\":\"$SIG_QUAL\",\"rssi\":\"$RSSI\",\"rsrq\":\"$RSRQ\",\"rscp\":\"$RSCP\",\"sinr\":\"$SINR\",\"operator\":\"$OPERATOR\",\"band\":\"$BAND\",\"pci\":\"$PCI\"}"
+  fi
+fi
+
+# 方法2: 读取 /tmp/ 缓存文件
+if [ "$CELL_JSON" = "{}" ]; then
+  for f in /tmp/modem_status /tmp/cellular_info /tmp/.modem_info /tmp/signal_info; do
+    if [ -f "$f" ]; then
+      NET_TYPE=$(grep -i 'network_type\|net_type\|type' "$f" 2>/dev/null | head -1 | sed 's/.*: *//')
+      SIG_QUAL=$(grep -i 'quality\|signal_quality' "$f" 2>/dev/null | head -1 | sed 's/.*: *//' | tr -d '%')
+      RSSI=$(grep -i 'rssi' "$f" 2>/dev/null | head -1 | sed 's/.*: *//' | grep -oE '[-]*[0-9]+')
+      RSRQ=$(grep -i 'rsrq' "$f" 2>/dev/null | head -1 | sed 's/.*: *//' | grep -oE '[-]*[0-9]+')
+      SINR=$(grep -i 'sinr' "$f" 2>/dev/null | head -1 | sed 's/.*: *//' | grep -oE '[-]*[0-9]+')
+      BAND=$(grep -i 'band' "$f" 2>/dev/null | head -1 | sed 's/.*: *//')
+      [ -n "$NET_TYPE" ] && CELL_JSON="{\"net_type\":\"$NET_TYPE\",\"quality\":\"$SIG_QUAL\",\"rssi\":\"$RSSI\",\"rsrq\":\"$RSRQ\",\"rscp\":\"$RSCP\",\"sinr\":\"$SINR\",\"band\":\"$BAND\"}" && break
+    fi
+  done
+fi
+
+# 方法3: AT 命令（通过 gcom/comgt）
+if [ "$CELL_JSON" = "{}" ]; then
+  for PORT in /dev/ttyUSB0 /dev/ttyUSB2 /dev/ttyACM0 /dev/ttyMTK1; do
+    if [ -e "$PORT" ]; then
+      AT_OUT=$(gcom -d "$PORT" -s /etc/gcom/getsignal.gcom 2>/dev/null || comgt -d "$PORT" sig 2>/dev/null)
+      if [ -n "$AT_OUT" ]; then
+        RSSI=$(echo "$AT_OUT" | grep -oE 'rssi:[^,]+' | grep -oE '[-]*[0-9]+' | head -1)
+        RSCP=$(echo "$AT_OUT" | grep -oE 'rscp:[^,]+' | grep -oE '[-]*[0-9]+' | head -1)
+        RSRQ=$(echo "$AT_OUT" | grep -oE 'rsrq:[^,]+' | grep -oE '[-]*[0-9]+' | head -1)
+        [ -n "$RSSI" ] && CELL_JSON="{\"rssi\":\"${RSSI} dBm\",\"rscp\":\"${RSCP} dBm\",\"rsrq\":\"${RSRQ} dB\"}" && break
+      fi
+    fi
+  done
+fi
 
 # ========== 输出 JSON ==========
 cat << EOF
@@ -123,7 +187,8 @@ cat << EOF
   },
   "leases": [$LEASES],
   "wifi_clients": [$WIFI_CLIENTS],
-  "wifi_info": [$WIFI_INFO]
+  "wifi_info": [$WIFI_INFO],
+  "cellular": $CELL_JSON
 }
 EOF
 

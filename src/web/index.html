@@ -189,6 +189,122 @@
     .signal-medium::before { background: var(--warning); }
     .signal-weak { background: rgba(198,40,40,0.08); color: var(--danger); }
     .signal-weak::before { background: var(--danger); }
+    /* ---- Cellular Signal ---- */
+    .cell-grid {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      gap: 32px;
+      align-items: center;
+    }
+    .signal-visual {
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      gap: 6px;
+      height: 80px;
+      padding: 8px 0;
+    }
+    .signal-bar {
+      width: 14px;
+      border-radius: 4px 4px 0 0;
+      background: var(--border);
+      transition: background 0.3s;
+    }
+    .signal-bar.active { background: var(--accent); }
+    .signal-bar.warn { background: var(--warning); }
+    .signal-bar.strong { background: var(--success); }
+    .signal-pct {
+      text-align: center;
+      font-size: 32px;
+      font-weight: 300;
+      color: var(--text-primary);
+      margin-top: 8px;
+    }
+    .signal-pct-label {
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-tertiary);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .cell-info {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+    }
+    .cell-item {
+      padding: 12px 16px;
+      background: var(--white);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+    }
+    .cell-item-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--text-tertiary);
+      margin-bottom: 4px;
+    }
+    .cell-item-value {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+    .cell-empty {
+      text-align: center;
+      padding: 32px;
+      color: var(--text-tertiary);
+      font-size: 13px;
+    }
+    .cell-grid.no-signal {
+      grid-template-columns: 1fr;
+    }
+    .cell-grid.no-signal .signal-visual { display: none; }
+
+    /* ---- Cellular Signal ---- */
+    .cell-grid {
+      display: grid; grid-template-columns: 160px 1fr;
+      gap: 32px; align-items: center;
+    }
+    .signal-visual {
+      display: flex; align-items: flex-end; justify-content: center;
+      gap: 6px; height: 80px; padding: 8px 0;
+    }
+    .signal-bar {
+      width: 14px; border-radius: 4px 4px 0 0;
+      background: var(--border); transition: background 0.3s;
+    }
+    .signal-bar.active { background: var(--accent); }
+    .signal-bar.warn { background: var(--warning); }
+    .signal-bar.strong { background: var(--success); }
+    .signal-pct {
+      text-align: center; font-size: 32px; font-weight: 300;
+      color: var(--text-primary); margin-top: 8px;
+    }
+    .signal-pct-label {
+      text-align: center; font-size: 11px;
+      color: var(--text-tertiary); letter-spacing: 1px; text-transform: uppercase;
+    }
+    .cell-info {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px;
+    }
+    .cell-item {
+      padding: 12px 16px; background: var(--white);
+      border-radius: var(--radius-sm); border: 1px solid var(--border);
+    }
+    .cell-item-label {
+      font-size: 10px; font-weight: 600; letter-spacing: 1px;
+      text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 4px;
+    }
+    .cell-item-value {
+      font-size: 15px; font-weight: 500; color: var(--text-primary);
+    }
+    .cell-empty {
+      text-align: center; padding: 32px;
+      color: var(--text-tertiary); font-size: 13px;
+    }
+
     .empty-state {
       text-align: center; padding: 48px 24px;
       color: var(--text-tertiary); font-size: 14px;
@@ -306,6 +422,19 @@
         </table>
       </div>
     </section>
+
+    <!-- Cellular Signal -->
+    <section class="section">
+      <div class="section-header">
+        <div class="section-title">蜂窝网络</div>
+        <div class="section-count" id="cellType"></div>
+      </div>
+      <div class="table-wrap" style="padding: 24px;">
+        <div class="cell-grid" id="cellInfo">
+          <div class="cell-empty">检测中…</div>
+        </div>
+      </div>
+    </section>
   </main>
   <footer class="footer">
     <div class="last-update">最后更新: <span id="lastUpdate">—</span></div>
@@ -357,6 +486,7 @@
         this.wifiInfo(d.wifi_info);
         this.leases(d.leases);
         this.clients(d.wifi_clients);
+        this.cellular(d.cellular);
         this.timestamp();
       },
       uptime(s) {
@@ -443,6 +573,41 @@
           </tr>`;
         }).join('');
       },
+      cellular(cell) {
+        const el = document.getElementById('cellInfo');
+        const typeEl = document.getElementById('cellType');
+        if (!cell || !cell.net_type) {
+          el.innerHTML = '<div class="cell-empty">未检测到蜂窝网络</div>';
+          typeEl.textContent = '';
+          return;
+        }
+        const quality = parseInt(cell.quality) || 0;
+        const thresholds = [20, 35, 50, 65, 80];
+        const barsHtml = thresholds.map((t, i) => {
+          const h = 16 + i * 14;
+          let cls = quality >= t ? (quality >= 70 ? 'strong' : (quality >= 40 ? 'active' : 'warn')) : '';
+          return '<div class="signal-bar ' + cls + '" style="height:' + h + 'px"></div>';
+        }).join('');
+        const fields = [
+          ['信号强度', cell.rssi ? cell.rssi + ' dBm' : ''],
+          ['接收质量', cell.rsrq ? cell.rsrq + ' dB' : ''],
+          ['接收功率', cell.rscp ? cell.rscp + ' dBm' : ''],
+          ['信噪比', cell.sinr ? cell.sinr + ' dB' : ''],
+          ['运营商', cell.operator || ''],
+          ['频段', cell.band || ''],
+          ['PCI', cell.pci || ''],
+        ].filter(f => f[1]);
+        const infoHtml = fields.map(f =>
+          '<div class="cell-item"><div class="cell-item-label">' + f[0] + '</div><div class="cell-item-value">' + f[1] + '</div></div>'
+        ).join('');
+        typeEl.textContent = cell.net_type || '';
+        el.innerHTML =
+          '<div><div class="signal-visual">' + barsHtml + '</div>' +
+          '<div class="signal-pct">' + quality + '%</div>' +
+          '<div class="signal-pct-label">信号质量</div></div>' +
+          '<div class="cell-info">' + infoHtml + '</div>';
+      },
+
       timestamp() {
         document.getElementById('lastUpdate').textContent =
           new Date().toLocaleTimeString('zh-CN', { hour12: false });
