@@ -11,7 +11,7 @@ set -e
 REPO="keiraee/cpe-monitor"
 BRANCH="master"
 BASE_URL="https://raw.githubusercontent.com/$REPO/$BRANCH"
-VERSION="1.0.2"
+VERSION="1.0.3"
 
 CGI_DIR="/www/cgi-bin"
 HTML_DIR="/www/cmonitor"
@@ -40,16 +40,24 @@ is_installed() {
 }
 
 download() {
-  local url="$1" dest="$2"
+  local url="$1" dest="$2" attempt=0
   mkdir -p "$(dirname "$dest")"
-  if command -v curl >/dev/null 2>&1; then
-    curl -fSL# --connect-timeout 10 --max-time 60 "$url" -o "$dest"
-  elif command -v wget >/dev/null 2>&1; then
-    wget --timeout=60 -O "$dest" "$url"
-  else
-    echo -e "  \033[0;31m错误: 设备缺少 curl 和 wget，无法下载\033[0m"
-    return 1
-  fi
+  while [ $attempt -lt 3 ]; do
+    if command -v curl >/dev/null 2>&1; then
+      curl -fSL# --connect-timeout 15 --max-time 120 "$url" -o "$dest" && return 0
+    elif command -v wget >/dev/null 2>&1; then
+      wget --timeout=120 -O "$dest" "$url" && return 0
+    else
+      echo -e "  \033[0;31m错误: 设备缺少 curl 和 wget\033[0m"
+      return 1
+    fi
+    attempt=$((attempt + 1))
+    if [ $attempt -lt 3 ]; then
+      echo -e "  \033[0;33m  下载失败，第 $attempt 次重试...\033[0m"
+      sleep 3
+    fi
+  done
+  return 1
 }
 
 pause() {
@@ -92,7 +100,7 @@ do_install() {
     echo ""
     echo -e "  访问: \033[0;36mhttp://$ip/cmonitor/\033[0m"
   else
-    echo -e "  \033[0;31m✗ 安装异常，请检查文件\033[0m"
+    echo -e "  \033[0;31m✗ 安装异常\033[0m"
   fi
   pause
 }
@@ -179,7 +187,7 @@ do_debug() {
   echo ""
   echo -e "\033[0;34m=== CGI 脚本调试 ===\033[0m"
   echo ""
-  echo -e "\033[0;34m[1/4]\033[0m 检查 CGI 文件..."
+  echo -e "\033[0;34m[1/5]\033[0m 检查 CGI 文件..."
   if [ -f "$CGI_FILE" ]; then
     echo -e "  \033[0;32m✓\033[0m $CGI_FILE 存在"
     ls -la "$CGI_FILE"
@@ -189,7 +197,7 @@ do_debug() {
   fi
 
   echo ""
-  echo -e "\033[0;34m[2/4]\033[0m 测试 ubus 无线接口..."
+  echo -e "\033[0;34m[2/5]\033[0m 测试 ubus 无线接口..."
   local ifaces=$(ubus call network.wireless status 2>/dev/null | jsonfilter -e '@.*.interfaces[*].ifname')
   if [ -n "$ifaces" ]; then
     echo -e "  \033[0;32m✓\033[0m ubus 发现接口: $ifaces"
@@ -265,7 +273,7 @@ show_menu() {
   echo "  1) 安装"
   echo "  2) 更新"
   echo "  3) 卸载"
-  echo "  4) 调试 (查看CGI输出)"
+  echo "  4) 调试"
   echo "  0) 退出"
   echo ""
 }
