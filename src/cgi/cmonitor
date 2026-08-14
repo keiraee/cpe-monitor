@@ -149,6 +149,12 @@ if [ -f /tmp/cpe_cell.file ] && [ -s /tmp/cpe_cell.file ]; then
   fi
 fi
 
+  else
+    # 调试: 文件存在但读取失败
+    CELL_JSON="{"debug":"file exists but L11 empty","lines":$(wc -l < /tmp/cpe_cell.file 2>/dev/null || echo 0)}"
+  fi
+fi
+
 # Fallback: AT 命令
 if [ "$CELL_JSON" = "{}" ]; then
   for PORT in /dev/ttyUSB2 /dev/ttyUSB0; do
