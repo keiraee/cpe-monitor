@@ -11,7 +11,7 @@ set -e
 REPO="keiraee/cpe-monitor"
 BRANCH="master"
 BASE_URL="https://raw.githubusercontent.com/$REPO/$BRANCH"
-VERSION="1.0.0"
+VERSION="1.0.1"
 
 CGI_DIR="/www/cgi-bin"
 HTML_DIR="/www/cmonitor"
@@ -86,16 +86,16 @@ do_install() {
   pause
 }
 
-# ---- 更新（自更新 + 文件更新）----
+# ---- 更新 ----
 do_update() {
   echo ""
-  echo -e "${B}[1/4]${N} 更新管理工具..."
+  echo -e "${B}[1/4]${N} 检查管理工具更新..."
   local tmp="/tmp/cm.sh.new"
   if download "$BASE_URL/scripts/cm.sh" "$tmp"; then
     local new_ver=$(grep '^VERSION=' "$tmp" | head -1 | cut -d'"' -f2)
     local cur_ver="$VERSION"
     if [ "$new_ver" != "$cur_ver" ]; then
-      echo -e "  ${G}✓${N} 发现新版本: $cur_ver → $new_ver"
+      echo -e "  ${G}✓${N} 发现新版本: $cur_ver → $new_ver，正在更新..."
       chmod +x "$tmp"
       cp "$tmp" "$SELF_PATH"
       rm -f "$tmp"
@@ -163,6 +163,63 @@ do_uninstall() {
   esac
 }
 
+# ---- 调试 ----
+do_debug() {
+  echo ""
+  echo -e "${B}=== CGI 脚本调试 ===${N}"
+  echo ""
+  echo -e "${B}[1/4]${N} 检查 CGI 文件..."
+  if [ -f "$CGI_FILE" ]; then
+    echo -e "  ${G}✓${N} $CGI_FILE 存在"
+    ls -la "$CGI_FILE"
+  else
+    echo -e "  ${R}✗${N} $CGI_FILE 不存在，请先安装"
+    pause; return 1
+  fi
+
+  echo ""
+  echo -e "${B}[2/4]${N} 测试 ubus 无线接口..."
+  local ifaces=$(ubus call network.wireless status 2>/dev/null | jsonfilter -e '@.*.interfaces[*].ifname')
+  if [ -n "$ifaces" ]; then
+    echo -e "  ${G}✓${N} ubus 发现接口: $ifaces"
+  else
+    echo -e "  ${Y}⚠${N} ubus 未返回接口，尝试 iwinfo fallback..."
+    ifaces=$(iwinfo 2>/dev/null | sed -n 's/^\([a-z0-9]*\)  .*/\1/p')
+    if [ -n "$ifaces" ]; then
+      echo -e "  ${G}✓${N} iwinfo 发现接口: $ifaces"
+    else
+      echo -e "  ${R}✗${N} 未发现任何无线接口"
+    fi
+  fi
+
+  echo ""
+  echo -e "${B}[3/4]${N} 直接运行 CGI 脚本..."
+  echo "--- 输出开始 ---"
+  sh "$CGI_FILE" 2>/tmp/cm_debug_err.log
+  echo ""
+  echo "--- 输出结束 ---"
+
+  if [ -s /tmp/cm_debug_err.log ]; then
+    echo ""
+    echo -e "${Y}错误输出:${N}"
+    cat /tmp/cm_debug_err.log
+  fi
+
+  echo ""
+  echo -e "${B}[4/4]${N} 检查关键命令..."
+  for cmd in ubus jsonfilter iwinfo free df awk; do
+    if command -v $cmd >/dev/null 2>&1; then
+      echo -e "  ${G}✓${N} $cmd"
+    else
+      echo -e "  ${R}✗${N} $cmd 缺失"
+    fi
+  done
+
+  echo ""
+  echo -e "${B}=== 调试完成 ===${N}"
+  pause
+}
+
 # ---- 菜单 ----
 show_menu() {
   local host=$(get_hostname)
@@ -188,12 +245,12 @@ show_menu() {
   echo "  1) 安装"
   echo "  2) 更新"
   echo "  3) 卸载"
+  echo "  4) 调试 (查看CGI输出)"
   echo "  0) 退出"
   echo ""
 }
 
 # ---- 主流程 ----
-# 支持内部调用: cm _update_files
 if [ "$1" = "_update_files" ]; then
   _update_files
   exit 0
@@ -201,12 +258,13 @@ fi
 
 while true; do
   show_menu
-  echo -n "  请选择 [0-3]: "
+  echo -n "  请选择 [0-4]: "
   read -r choice 2>/dev/null || choice="0"
   case "$choice" in
     1) do_install ;;
     2) do_update ;;
     3) do_uninstall ;;
+    4) do_debug ;;
     0) echo "  再见!"; exit 0 ;;
     *) echo -e "  ${Y}无效选项${N}"; sleep 1 ;;
   esac
