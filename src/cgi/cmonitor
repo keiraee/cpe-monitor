@@ -115,39 +115,37 @@ done
 
 # ========== 蜂窝网络信息 ==========
 CELL_JSON='{}'
-CELL_FILE="/tmp/cpe_cell.file"
 
-if [ -f "$CELL_FILE" ]; then
-  # 文件格式（按行）：
-  # 1:品牌 2:型号 3:固件 4:温度 5:时间 6:SIM 7:运营商 8:IMEI 9:IMSI 10:ICCID
-  # 11:网络类型 12:信号质量% 13:RSSI 14:RSRQ 15:RSCP 16:SINR
-  # 17:MCC/MNC 18:LAC 19:CellID 20:频段 21:EARFCN 22:PCI
-  CELL_DATA=$(sed -n '11,22p' "$CELL_FILE" 2>/dev/null)
-  if [ -n "$CELL_DATA" ]; then
-    NET_TYPE=$(echo "$CELL_DATA" | sed -n '1p')
-    SIG_QUAL=$(echo "$CELL_DATA" | sed -n '2p' | tr -d '%')
-    RSSI=$(echo "$CELL_DATA" | sed -n '3p' | grep -oE '[-]*[0-9]+')
-    RSRQ=$(echo "$CELL_DATA" | sed -n '4p' | grep -oE '[-]*[0-9]+')
-    RSCP=$(echo "$CELL_DATA" | sed -n '5p' | grep -oE '[-]*[0-9]+')
-    SINR=$(echo "$CELL_DATA" | sed -n '6p' | grep -oE '[-]*[0-9]+')
-    OPERATOR=$(sed -n '7p' "$CELL_FILE" 2>/dev/null)
-    MCC_MNC=$(echo "$CELL_DATA" | sed -n '7p')
-    LAC=$(echo "$CELL_DATA" | sed -n '8p' | awk '{print $1}')
-    CELLID=$(echo "$CELL_DATA" | sed -n '9p')
-    BAND=$(echo "$CELL_DATA" | sed -n '10p')
-    PCI=$(echo "$CELL_DATA" | sed -n '12p')
-    [ -n "$NET_TYPE" ] && CELL_JSON="{\"net_type\":\"$NET_TYPE\",\"quality\":\"$SIG_QUAL\",\"rssi\":\"$RSSI\",\"rsrq\":\"$RSRQ\",\"rscp\":\"$RSCP\",\"sinr\":\"$SINR\",\"operator\":\"$OPERATOR\",\"band\":\"$BAND\",\"pci\":\"$PCI\",\"mcc_mnc\":\"$MCC_MNC\",\"lac\":\"$LAC\",\"cellid\":\"$CELLID\"}"
+# 读取 /tmp/cpe_cell.file（固件自动生成）
+if [ -f /tmp/cpe_cell.file ] && [ -s /tmp/cpe_cell.file ]; then
+  L11=$(sed -n '11p' /tmp/cpe_cell.file)
+  L12=$(sed -n '12p' /tmp/cpe_cell.file)
+  L13=$(sed -n '13p' /tmp/cpe_cell.file)
+  L14=$(sed -n '14p' /tmp/cpe_cell.file)
+  L15=$(sed -n '15p' /tmp/cpe_cell.file)
+  L16=$(sed -n '16p' /tmp/cpe_cell.file)
+  L07=$(sed -n '7p' /tmp/cpe_cell.file)
+  L17=$(sed -n '17p' /tmp/cpe_cell.file)
+  L18=$(sed -n '18p' /tmp/cpe_cell.file)
+  L19=$(sed -n '19p' /tmp/cpe_cell.file)
+  L20=$(sed -n '20p' /tmp/cpe_cell.file)
+  L22=$(sed -n '22p' /tmp/cpe_cell.file)
+  if [ -n "$L11" ]; then
+    CELL_JSON="{\"net_type\":\"$L11\",\"quality\":\"$(echo $L12 | tr -d '%')\",\"rssi\":\"$(echo $L13 | grep -oE '[-]*[0-9]+')\",\"rsrq\":\"$(echo $L14 | grep -oE '[-]*[0-9]+')\",\"rscp\":\"$(echo $L15 | grep -oE '[-]*[0-9]+')\",\"sinr\":\"$(echo $L16 | grep -oE '[-]*[0-9]+')\",\"operator\":\"$L07\",\"mcc_mnc\":\"$L17\",\"lac\":\"$(echo $L18 | awk '{print \$1}')\",\"cellid\":\"$L19\",\"band\":\"$L20\",\"pci\":\"$L22\"}"
   fi
 fi
 
 # Fallback: AT 命令
 if [ "$CELL_JSON" = "{}" ]; then
-  for PORT in /dev/ttyUSB0 /dev/ttyUSB2 /dev/ttyACM0; do
+  for PORT in /dev/ttyUSB2 /dev/ttyUSB0; do
     [ -e "$PORT" ] || continue
-    AT_OUT=$(gcom -d "$PORT" -s /etc/gcom/getsignal.gcom 2>/dev/null)
-    if [ -n "$AT_OUT" ]; then
-      RSSI=$(echo "$AT_OUT" | grep -oE 'rssi:[^,]+' | grep -oE '[-]*[0-9]+' | head -1)
-      [ -n "$RSSI" ] && CELL_JSON="{\"rssi\":\"$RSSI\"}" && break
+    CSQ=$(echo "AT+CSQ" | gcom -d "$PORT" -s /dev/stdin 2>/dev/null | grep '+CSQ:' | grep -oE '[0-9]+' | head -1)
+    if [ -n "$CSQ" ] && [ "$CSQ" -lt 99 ]; then
+      RSSI=$(( -113 + 2 * CSQ ))
+      QUAL=$(( CSQ * 100 / 31 ))
+      COPS=$(echo "AT+COPS?" | gcom -d "$PORT" -s /dev/stdin 2>/dev/null | grep '+COPS:' | sed 's/.*"\(.*\)".*/\1/')
+      CELL_JSON="{\"net_type\":\"蜂窝网络\",\"quality\":\"$QUAL\",\"rssi\":\"$RSSI\",\"operator\":\"$COPS\"}"
+      break
     fi
   done
 fi
