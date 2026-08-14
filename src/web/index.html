@@ -594,8 +594,11 @@
           ['接收功率', cell.rscp ? cell.rscp + ' dBm' : ''],
           ['信噪比', cell.sinr ? cell.sinr + ' dB' : ''],
           ['运营商', cell.operator || ''],
+          ['MCC/MNC', cell.mcc_mnc || ''],
           ['频段', cell.band || ''],
           ['PCI', cell.pci || ''],
+          ['LAC', cell.lac || ''],
+          ['Cell ID', cell.cellid || ''],
         ].filter(f => f[1]);
         const infoHtml = fields.map(f =>
           '<div class="cell-item"><div class="cell-item-label">' + f[0] + '</div><div class="cell-item-value">' + f[1] + '</div></div>'
