@@ -9,7 +9,7 @@ set -e
 
 # ---- 配置 ----
 REPO="keiraee/cpe-monitor"
-BRANCH="main"
+BRANCH="master"
 BASE_URL="https://raw.githubusercontent.com/$REPO/$BRANCH"
 VERSION="1.0.0"
 
