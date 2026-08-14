@@ -11,6 +11,9 @@ Thumbs.db
 # Logs
 *.log
 
+# AI handoff doc (not for version control)
+AI_HANDOFF.md
+
 # Temp
 *.tmp
 *.bak
