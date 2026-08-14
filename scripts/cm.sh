@@ -43,9 +43,9 @@ download() {
   local url="$1" dest="$2"
   mkdir -p "$(dirname "$dest")"
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$url" -o "$dest"
+    curl -fSL# --connect-timeout 10 --max-time 60 "$url" -o "$dest"
   elif command -v wget >/dev/null 2>&1; then
-    wget -qO "$dest" "$url"
+    wget --timeout=60 -O "$dest" "$url"
   else
     echo -e "  \033[0;31m错误: 设备缺少 curl 和 wget，无法下载\033[0m"
     return 1
