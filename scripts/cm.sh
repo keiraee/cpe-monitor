@@ -47,7 +47,7 @@ download() {
   elif command -v wget >/dev/null 2>&1; then
     wget -qO "$dest" "$url"
   else
-    echo -e "  ${R}错误: 设备缺少 curl 和 wget，无法下载${N}"
+    echo -e "  \033[0;31m错误: 设备缺少 curl 和 wget，无法下载\033[0m"
     return 1
   fi
 }
@@ -60,28 +60,39 @@ pause() {
 
 # ---- 安装 ----
 do_install() {
+  if is_installed; then
+    echo ""
+    echo -e "  \033[0;33m⚠ 当前已安装，重新安装将覆盖现有文件\033[0m"
+    echo -n "  确认重新安装？(y/N): "
+    read -r confirm 2>/dev/null || confirm="n"
+    case "$confirm" in
+      y|Y) ;;
+      *) return 0 ;;
+    esac
+  fi
+
   echo ""
-  echo -e "${B}[1/3]${N} 下载 CGI 监控脚本..."
+  echo -e "\033[0;34m[1/3]\033[0m 下载 CGI 监控脚本..."
   if ! download "$BASE_URL/src/cgi/cmonitor" "$CGI_FILE"; then
-    echo -e "  ${R}✗ 下载失败${N}"; pause; return 1
+    echo -e "  \033[0;31m✗ 下载失败\033[0m"; pause; return 1
   fi
   chmod +x "$CGI_FILE"
-  echo -e "  ${G}✓${N} $CGI_FILE"
+  echo -e "  \033[0;32m✓\033[0m $CGI_FILE"
 
-  echo -e "${B}[2/3]${N} 下载前端页面..."
+  echo -e "\033[0;34m[2/3]\033[0m 下载前端页面..."
   if ! download "$BASE_URL/src/web/index.html" "$HTML_FILE"; then
-    echo -e "  ${R}✗ 下载失败${N}"; pause; return 1
+    echo -e "  \033[0;31m✗ 下载失败\033[0m"; pause; return 1
   fi
-  echo -e "  ${G}✓${N} $HTML_FILE"
+  echo -e "  \033[0;32m✓\033[0m $HTML_FILE"
 
-  echo -e "${B}[3/3]${N} 验证安装..."
+  echo -e "\033[0;34m[3/3]\033[0m 验证安装..."
   if is_installed; then
     local ip=$(get_ip)
-    echo -e "  ${G}✓ 安装成功${N}"
+    echo -e "  \033[0;32m✓ 安装成功\033[0m"
     echo ""
-    echo -e "  访问: ${C}http://$ip/cmonitor/${N}"
+    echo -e "  访问: \033[0;36mhttp://$ip/cmonitor/\033[0m"
   else
-    echo -e "  ${R}✗ 安装异常，请检查文件${N}"
+    echo -e "  \033[0;31m✗ 安装异常，请检查文件\033[0m"
   fi
   pause
 }
@@ -89,50 +100,50 @@ do_install() {
 # ---- 更新 ----
 do_update() {
   echo ""
-  echo -e "${B}[1/4]${N} 检查管理工具更新..."
+  echo -e "\033[0;34m[1/4]\033[0m 检查管理工具更新..."
   local tmp="/tmp/cm.sh.new"
   if download "$BASE_URL/scripts/cm.sh" "$tmp"; then
     local new_ver=$(grep '^VERSION=' "$tmp" | head -1 | cut -d'"' -f2)
     local cur_ver="$VERSION"
     if [ "$new_ver" != "$cur_ver" ]; then
-      echo -e "  ${G}✓${N} 发现新版本: $cur_ver → $new_ver，正在更新..."
+      echo -e "  \033[0;32m✓\033[0m 发现新版本: $cur_ver → $new_ver，正在更新..."
       chmod +x "$tmp"
       cp "$tmp" "$SELF_PATH"
       rm -f "$tmp"
-      echo -e "  ${G}✓${N} 管理工具已更新，用新版本继续..."
+      echo -e "  \033[0;32m✓\033[0m 管理工具已更新，用新版本继续..."
       exec "$SELF_PATH" _update_files
     else
-      echo -e "  ${G}✓${N} 已是最新版本 ($cur_ver)"
+      echo -e "  \033[0;32m✓\033[0m 已是最新版本 ($cur_ver)"
       rm -f "$tmp"
     fi
   else
-    echo -e "  ${Y}⚠ 无法检查更新，继续更新监控文件...${N}"
+    echo -e "  \033[0;33m⚠ 无法检查更新，继续更新监控文件...\033[0m"
   fi
 
   _update_files
 }
 
 _update_files() {
-  echo -e "${B}[2/4]${N} 下载最新 CGI 脚本..."
+  echo -e "\033[0;34m[2/4]\033[0m 下载最新 CGI 脚本..."
   if download "$BASE_URL/src/cgi/cmonitor" "$CGI_FILE"; then
     chmod +x "$CGI_FILE"
-    echo -e "  ${G}✓${N} CGI 脚本已更新"
+    echo -e "  \033[0;32m✓\033[0m CGI 脚本已更新"
   else
-    echo -e "  ${R}✗ CGI 脚本更新失败${N}"
+    echo -e "  \033[0;31m✗ CGI 脚本更新失败\033[0m"
   fi
 
-  echo -e "${B}[3/4]${N} 下载最新前端页面..."
+  echo -e "\033[0;34m[3/4]\033[0m 下载最新前端页面..."
   if download "$BASE_URL/src/web/index.html" "$HTML_FILE"; then
-    echo -e "  ${G}✓${N} 前端页面已更新"
+    echo -e "  \033[0;32m✓\033[0m 前端页面已更新"
   else
-    echo -e "  ${R}✗ 前端页面更新失败${N}"
+    echo -e "  \033[0;31m✗ 前端页面更新失败\033[0m"
   fi
 
-  echo -e "${B}[4/4]${N} 验证..."
+  echo -e "\033[0;34m[4/4]\033[0m 验证..."
   if is_installed; then
-    echo -e "  ${G}✓ 更新完成${N}"
+    echo -e "  \033[0;32m✓ 更新完成\033[0m"
   else
-    echo -e "  ${R}✗ 文件缺失，请重新安装${N}"
+    echo -e "  \033[0;31m✗ 文件缺失，请重新安装\033[0m"
   fi
   pause
 }
@@ -140,7 +151,7 @@ _update_files() {
 # ---- 卸载 ----
 do_uninstall() {
   echo ""
-  echo -e "${Y}即将删除以下文件:${N}"
+  echo -e "\033[0;33m即将删除以下文件:\033[0m"
   echo "  - $CGI_FILE"
   echo "  - $HTML_FILE"
   echo "  - $SELF_PATH"
@@ -150,10 +161,10 @@ do_uninstall() {
   case "$confirm" in
     y|Y)
       rm -f "$CGI_FILE" "$HTML_FILE"
-      echo -e "  ${G}✓${N} 监控文件已删除"
+      echo -e "  \033[0;32m✓\033[0m 监控文件已删除"
       rm -f "$SELF_PATH"
-      echo -e "  ${G}✓${N} 管理工具已删除"
-      echo -e "  ${G}✓ 卸载完成${N}"
+      echo -e "  \033[0;32m✓\033[0m 管理工具已删除"
+      echo -e "  \033[0;32m✓ 卸载完成\033[0m"
       exit 0
       ;;
     *)
@@ -166,34 +177,34 @@ do_uninstall() {
 # ---- 调试 ----
 do_debug() {
   echo ""
-  echo -e "${B}=== CGI 脚本调试 ===${N}"
+  echo -e "\033[0;34m=== CGI 脚本调试 ===\033[0m"
   echo ""
-  echo -e "${B}[1/4]${N} 检查 CGI 文件..."
+  echo -e "\033[0;34m[1/4]\033[0m 检查 CGI 文件..."
   if [ -f "$CGI_FILE" ]; then
-    echo -e "  ${G}✓${N} $CGI_FILE 存在"
+    echo -e "  \033[0;32m✓\033[0m $CGI_FILE 存在"
     ls -la "$CGI_FILE"
   else
-    echo -e "  ${R}✗${N} $CGI_FILE 不存在，请先安装"
+    echo -e "  \033[0;31m✗\033[0m $CGI_FILE 不存在，请先安装"
     pause; return 1
   fi
 
   echo ""
-  echo -e "${B}[2/4]${N} 测试 ubus 无线接口..."
+  echo -e "\033[0;34m[2/4]\033[0m 测试 ubus 无线接口..."
   local ifaces=$(ubus call network.wireless status 2>/dev/null | jsonfilter -e '@.*.interfaces[*].ifname')
   if [ -n "$ifaces" ]; then
-    echo -e "  ${G}✓${N} ubus 发现接口: $ifaces"
+    echo -e "  \033[0;32m✓\033[0m ubus 发现接口: $ifaces"
   else
-    echo -e "  ${Y}⚠${N} ubus 未返回接口，尝试 iwinfo fallback..."
+    echo -e "  \033[0;33m⚠\033[0m ubus 未返回接口，尝试 iwinfo fallback..."
     ifaces=$(iwinfo 2>/dev/null | sed -n 's/^\([a-z0-9]*\)  .*/\1/p')
     if [ -n "$ifaces" ]; then
-      echo -e "  ${G}✓${N} iwinfo 发现接口: $ifaces"
+      echo -e "  \033[0;32m✓\033[0m iwinfo 发现接口: $ifaces"
     else
-      echo -e "  ${R}✗${N} 未发现任何无线接口"
+      echo -e "  \033[0;31m✗\033[0m 未发现任何无线接口"
     fi
   fi
 
   echo ""
-  echo -e "${B}[3/4]${N} 直接运行 CGI 脚本..."
+  echo -e "\033[0;34m[3/4]\033[0m 直接运行 CGI 脚本..."
   echo "--- 输出开始 ---"
   sh "$CGI_FILE" 2>/tmp/cm_debug_err.log
   echo ""
@@ -201,22 +212,22 @@ do_debug() {
 
   if [ -s /tmp/cm_debug_err.log ]; then
     echo ""
-    echo -e "${Y}错误输出:${N}"
+    echo -e "\033[0;33m错误输出:\033[0m"
     cat /tmp/cm_debug_err.log
   fi
 
   echo ""
-  echo -e "${B}[4/4]${N} 检查关键命令..."
+  echo -e "\033[0;34m[4/4]\033[0m 检查关键命令..."
   for cmd in ubus jsonfilter iwinfo free df awk; do
     if command -v $cmd >/dev/null 2>&1; then
-      echo -e "  ${G}✓${N} $cmd"
+      echo -e "  \033[0;32m✓\033[0m $cmd"
     else
-      echo -e "  ${R}✗${N} $cmd 缺失"
+      echo -e "  \033[0;31m✗\033[0m $cmd 缺失"
     fi
   done
 
   echo ""
-  echo -e "${B}=== 调试完成 ===${N}"
+  echo -e "\033[0;34m=== 调试完成 ===\033[0m"
   pause
 }
 
@@ -234,13 +245,13 @@ show_menu() {
 
   clear 2>/dev/null || true
   echo ""
-  echo -e "  ${C}┌─────────────────────────────────────┐${N}"
-  echo -e "  ${C}│${N}  📡 CMonitor 管理工具  v$VERSION      ${C}│${N}"
-  echo -e "  ${C}├─────────────────────────────────────┤${N}"
-  echo -e "  ${C}│${N}  设备: $host"
-  echo -e "  ${C}│${N}  状态: $status_line"
-  echo -e "  ${C}│${N}  地址: ${B}http://$ip/cmonitor/${N}"
-  echo -e "  ${C}└─────────────────────────────────────┘${N}"
+  echo -e "  \033[0;36m┌─────────────────────────────────────┐\033[0m"
+  echo -e "  \033[0;36m│\033[0m  📡 CMonitor 管理工具  v$VERSION      \033[0;36m│\033[0m"
+  echo -e "  \033[0;36m├─────────────────────────────────────┤\033[0m"
+  echo -e "  \033[0;36m│\033[0m  设备: $host"
+  echo -e "  \033[0;36m│\033[0m  状态: $status_line"
+  echo -e "  \033[0;36m│\033[0m  地址: \033[0;34mhttp://$ip/cmonitor/\033[0m"
+  echo -e "  \033[0;36m└─────────────────────────────────────┘\033[0m"
   echo ""
   echo "  1) 安装"
   echo "  2) 更新"
@@ -266,6 +277,6 @@ while true; do
     3) do_uninstall ;;
     4) do_debug ;;
     0) echo "  再见!"; exit 0 ;;
-    *) echo -e "  ${Y}无效选项${N}"; sleep 1 ;;
+    *) echo -e "  \033[0;33m无效选项\033[0m"; sleep 1 ;;
   esac
 done
