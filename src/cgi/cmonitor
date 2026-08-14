@@ -46,37 +46,26 @@ fi
 WIFI_CLIENTS=""
 FIRST=1
 for IFACE in $WIFI_IFACES; do
-  # 获取关联客户端列表
-  CLIENTS_OUTPUT=$(iwinfo $IFACE assoclist 2>/dev/null)
-  [ $? -ne 0 ] && continue
-  
-  echo "$CLIENTS_OUTPUT" | while read LINE; do
-    # 提取 MAC 地址
-    MAC=$(echo "$LINE" | grep -oE '([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}')
-    [ -z "$MAC" ] && continue
-    
-    # 提取信号强度
-    SIGNAL=$(echo "$LINE" | grep -oE '[-][0-9]+' | head -1)
-    [ -z "$SIGNAL" ] && SIGNAL="N/A"
-    
-    # 提取数据速率
-    RX_RATE=$(echo "$LINE" | grep -oE '[0-9.]+ Mbit/s' | head -1 | awk '{print $1}')
-    TX_RATE=$(echo "$LINE" | grep -oE '[0-9.]+ Mbit/s' | tail -1 | awk '{print $1}')
-    [ -z "$RX_RATE" ] && RX_RATE="N/A"
-    [ -z "$TX_RATE" ] && TX_RATE="N/A"
-    
-    echo "$MAC|$IFACE|$SIGNAL|$RX_RATE|$TX_RATE"
-  done
-done > /tmp/wifi_clients_raw.txt 2>/dev/null
+  # 用 awk 解析多行 assoclist 输出，每个客户端占多行
+  iwinfo $IFACE assoclist 2>/dev/null | awk -v iface="$IFACE" '
+    /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}/ {
+      if (MAC != "") print MAC "|" iface "|" SIGNAL "|" RX "|" TX
+      MAC = $1
+      match($0, /[-][0-9]+/)
+      SIGNAL = substr($0, RSTART, RLENGTH)
+      RX = "N/A"; TX = "N/A"
+    }
+    /RX:/ { match($0, /[0-9.]+ M[Bb]it\/s/); if (RSTART) RX = substr($0, RSTART, RLENGTH-7) }
+    /TX:/ { match($0, /[0-9.]+ M[Bb]it\/s/); if (RSTART) TX = substr($0, RSTART, RLENGTH-7) }
+    END { if (MAC != "") print MAC "|" iface "|" SIGNAL "|" RX "|" TX }
+  ' >> /tmp/wifi_clients_raw.txt 2>/dev/null
+done
 
 # 构建 MAC → 主机名 映射（从 DHCP 租约）
 HOSTNAME_MAP="/tmp/mac_hostname_map.txt"
-awk '{print toupper($2), $4}' /tmp/dhcp.leases 2>/dev/null | while read M H; do
-  echo "$M $H"
-done > "$HOSTNAME_MAP" 2>/dev/null
+awk '{print toupper($2), $4}' /tmp/dhcp.leases 2>/dev/null > "$HOSTNAME_MAP" 2>/dev/null
 
 # 组装 JSON（含设备名）
-FIRST=1
 while IFS='|' read MAC IFACE SIGNAL RX_RATE TX_RATE; do
   [ -z "$MAC" ] && continue
   # 查找设备名
@@ -86,7 +75,7 @@ while IFS='|' read MAC IFACE SIGNAL RX_RATE TX_RATE; do
   WIFI_CLIENTS="$WIFI_CLIENTS{\"mac\":\"$MAC\",\"iface\":\"$IFACE\",\"signal\":\"$SIGNAL\",\"rx_rate\":\"$RX_RATE\",\"tx_rate\":\"$TX_RATE\",\"hostname\":\"$HOSTNAME\"}"
 done < /tmp/wifi_clients_raw.txt 2>/dev/null
 
-# 清理映射文件
+# 清理临时文件
 rm -f "$HOSTNAME_MAP"
 
 # ========== WiFi 网络信息 ==========
@@ -99,7 +88,7 @@ for IFACE in $WIFI_IFACES; do
   ESSID=$(echo "$INFO_OUTPUT" | grep -oE 'ESSID: ".*"' | sed 's/ESSID: "//;s/"//')
   CHANNEL=$(echo "$INFO_OUTPUT" | grep "Channel" | grep -oE '[0-9]+' | head -1)
   [ -z "$CHANNEL" ] && CHANNEL="N/A"
-  MODE=$(echo "$INFO_OUTPUT" | grep "Mode" | sed 's/.*Mode: *//' | awk '{print $1}' | tr -d '\r\n')
+  MODE=$(echo "$INFO_OUTPUT" | sed -n 's/.*Mode: *\([^ ]*\).*/\1/p' | tr -d '\r\n')
   [ -z "$MODE" ] && MODE="N/A"
   TXPOWER=$(echo "$INFO_OUTPUT" | grep "Tx-Power" | grep -oE '[0-9]+' | head -1)
   [ -z "$TXPOWER" ] && TXPOWER="N/A"
