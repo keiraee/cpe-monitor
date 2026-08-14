@@ -299,9 +299,9 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>MAC 地址</th><th>网络</th><th>信号强度</th><th>接收速率</th><th>发送速率</th></tr></thead>
+          <thead><tr><th>设备名称</th><th>MAC 地址</th><th>网络</th><th>信号强度</th><th>接收速率</th><th>发送速率</th></tr></thead>
           <tbody id="clientsBody">
-            <tr><td colspan="5" class="empty-state">暂无客户端</td></tr>
+            <tr><td colspan="6" class="empty-state">暂无客户端</td></tr>
           </tbody>
         </table>
       </div>
@@ -424,7 +424,7 @@
       clients(clients) {
         document.getElementById('clientCount').textContent = clients.length;
         const tb = document.getElementById('clientsBody');
-        if (!clients.length) { tb.innerHTML = '<tr><td colspan="5" class="empty-state">暂无客户端</td></tr>'; return; }
+        if (!clients.length) { tb.innerHTML = '<tr><td colspan="6" class="empty-state">暂无客户端</td></tr>'; return; }
         tb.innerHTML = clients.map(c => {
           const s = parseInt(c.signal);
           let cls = '', txt = '未知';
@@ -434,6 +434,7 @@
             else { cls = 'signal-weak'; txt = '弱'; }
           }
           return `<tr>
+            <td>${c.hostname || '未知设备'}</td>
             <td><code>${c.mac}</code></td>
             <td>${c.iface}</td>
             <td><span class="signal-badge ${cls}">${c.signal} dBm · ${txt}</span></td>

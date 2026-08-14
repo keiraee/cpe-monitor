@@ -69,13 +69,25 @@ for IFACE in $WIFI_IFACES; do
   done
 done > /tmp/wifi_clients_raw.txt 2>/dev/null
 
-# 组装 JSON
+# 构建 MAC → 主机名 映射（从 DHCP 租约）
+HOSTNAME_MAP="/tmp/mac_hostname_map.txt"
+awk '{print toupper($2), $4}' /tmp/dhcp.leases 2>/dev/null | while read M H; do
+  echo "$M $H"
+done > "$HOSTNAME_MAP" 2>/dev/null
+
+# 组装 JSON（含设备名）
 FIRST=1
 while IFS='|' read MAC IFACE SIGNAL RX_RATE TX_RATE; do
   [ -z "$MAC" ] && continue
+  # 查找设备名
+  HOSTNAME=$(grep -i "^$MAC " "$HOSTNAME_MAP" 2>/dev/null | awk '{print $2}')
+  [ -z "$HOSTNAME" ] || [ "$HOSTNAME" = "*" ] && HOSTNAME="未知设备"
   if [ $FIRST -eq 1 ]; then FIRST=0; else WIFI_CLIENTS="$WIFI_CLIENTS,"; fi
-  WIFI_CLIENTS="$WIFI_CLIENTS{\"mac\":\"$MAC\",\"iface\":\"$IFACE\",\"signal\":\"$SIGNAL\",\"rx_rate\":\"$RX_RATE\",\"tx_rate\":\"$TX_RATE\"}"
+  WIFI_CLIENTS="$WIFI_CLIENTS{\"mac\":\"$MAC\",\"iface\":\"$IFACE\",\"signal\":\"$SIGNAL\",\"rx_rate\":\"$RX_RATE\",\"tx_rate\":\"$TX_RATE\",\"hostname\":\"$HOSTNAME\"}"
 done < /tmp/wifi_clients_raw.txt 2>/dev/null
+
+# 清理映射文件
+rm -f "$HOSTNAME_MAP"
 
 # ========== WiFi 网络信息 ==========
 WIFI_INFO=""
@@ -87,7 +99,7 @@ for IFACE in $WIFI_IFACES; do
   ESSID=$(echo "$INFO_OUTPUT" | grep -oE 'ESSID: ".*"' | sed 's/ESSID: "//;s/"//')
   CHANNEL=$(echo "$INFO_OUTPUT" | grep "Channel" | grep -oE '[0-9]+' | head -1)
   [ -z "$CHANNEL" ] && CHANNEL="N/A"
-  MODE=$(echo "$INFO_OUTPUT" | grep "Mode" | awk '{print $2}' | tr -d '\r\n')
+  MODE=$(echo "$INFO_OUTPUT" | grep "Mode" | sed 's/.*Mode: *//' | awk '{print $1}' | tr -d '\r\n')
   [ -z "$MODE" ] && MODE="N/A"
   TXPOWER=$(echo "$INFO_OUTPUT" | grep "Tx-Power" | grep -oE '[0-9]+' | head -1)
   [ -z "$TXPOWER" ] && TXPOWER="N/A"
