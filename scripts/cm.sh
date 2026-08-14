@@ -204,7 +204,16 @@ do_debug() {
   fi
 
   echo ""
-  echo -e "\033[0;34m[3/4]\033[0m 直接运行 CGI 脚本..."
+  echo -e "\033[0;34m[3/5]\033[0m iwinfo 原始输出..."
+  for iface in $ifaces; do
+    echo "--- $iface assoclist ---"
+    iwinfo $iface assoclist 2>/dev/null || echo "(无数据)"
+    echo "--- $iface info ---"
+    iwinfo $iface info 2>/dev/null || echo "(无数据)"
+    echo ""
+  done
+
+  echo -e "\033[0;34m[4/5]\033[0m 直接运行 CGI 脚本..."
   echo "--- 输出开始 ---"
   sh "$CGI_FILE" 2>/tmp/cm_debug_err.log
   echo ""
@@ -217,7 +226,7 @@ do_debug() {
   fi
 
   echo ""
-  echo -e "\033[0;34m[4/4]\033[0m 检查关键命令..."
+  echo -e "\033[0;34m[5/5]\033[0m 检查关键命令..."
   for cmd in ubus jsonfilter iwinfo free df awk; do
     if command -v $cmd >/dev/null 2>&1; then
       echo -e "  \033[0;32m✓\033[0m $cmd"
