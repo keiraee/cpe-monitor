@@ -1,0 +1,119 @@
+#!/bin/sh
+# CPE Monitor CGI Script
+# 采集系统状态和网络连接信息，输出 JSON
+
+# HTTP 头
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo "Cache-Control: no-cache"
+echo ""
+
+# ========== 系统信息 ==========
+UPTIME=$(cat /proc/uptime | awk '{print int($1)}')
+LOAD=$(cat /proc/loadavg | awk '{print $1}')
+LOAD5=$(cat /proc/loadavg | awk '{print $2}')
+LOAD15=$(cat /proc/loadavg | awk '{print $3}')
+MEM_TOTAL=$(free | awk '/Mem:/{print $2}')
+MEM_USED=$(free | awk '/Mem:/{print $3}')
+MEM_AVAIL=$(free | awk '/Mem:/{print $7}')
+STOR_USED=$(df /overlay | awk 'NR==2{print $3}')
+STOR_AVAIL=$(df /overlay | awk 'NR==2{print $4}')
+CONNTRACK=$(cat /proc/sys/net/netfilter/nf_conntrack_count 2>/dev/null || echo 0)
+CONNTRACK_MAX=$(cat /proc/sys/net/netfilter/nf_conntrack_max 2>/dev/null || echo 0)
+
+# ========== DHCP 租约 ==========
+LEASES=""
+FIRST=1
+while read EXPIRY MAC IP HOSTNAME ID; do
+  [ -z "$IP" ] && continue
+  [ "$IP" = "*" ] && continue
+  if [ $FIRST -eq 1 ]; then FIRST=0; else LEASES="$LEASES,"; fi
+  # 转义 hostname 中的特殊字符
+  HOSTNAME=$(echo "$HOSTNAME" | sed 's/"/\\"/g')
+  [ -z "$HOSTNAME" ] || [ "$HOSTNAME" = "*" ] && HOSTNAME="未知设备"
+  LEASES="$LEASES{\"mac\":\"$MAC\",\"ip\":\"$IP\",\"hostname\":\"$HOSTNAME\"}"
+done < /tmp/dhcp.leases 2>/dev/null
+
+# ========== WiFi 客户端 ==========
+WIFI_CLIENTS=""
+FIRST=1
+for IFACE in ra0 rax0 rax1; do
+  # 获取关联客户端列表
+  CLIENTS_OUTPUT=$(iwinfo $IFACE assoclist 2>/dev/null)
+  [ $? -ne 0 ] && continue
+  
+  echo "$CLIENTS_OUTPUT" | while read LINE; do
+    # 提取 MAC 地址
+    MAC=$(echo "$LINE" | grep -oE '([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}')
+    [ -z "$MAC" ] && continue
+    
+    # 提取信号强度
+    SIGNAL=$(echo "$LINE" | grep -oE '[-][0-9]+' | head -1)
+    [ -z "$SIGNAL" ] && SIGNAL="N/A"
+    
+    # 提取数据速率
+    RX_RATE=$(echo "$LINE" | grep -oE '[0-9.]+ Mbit/s' | head -1 | awk '{print $1}')
+    TX_RATE=$(echo "$LINE" | grep -oE '[0-9.]+ Mbit/s' | tail -1 | awk '{print $1}')
+    [ -z "$RX_RATE" ] && RX_RATE="N/A"
+    [ -z "$TX_RATE" ] && TX_RATE="N/A"
+    
+    echo "$MAC|$IFACE|$SIGNAL|$RX_RATE|$TX_RATE"
+  done
+done > /tmp/wifi_clients_raw.txt 2>/dev/null
+
+# 组装 JSON
+FIRST=1
+while IFS='|' read MAC IFACE SIGNAL RX_RATE TX_RATE; do
+  [ -z "$MAC" ] && continue
+  if [ $FIRST -eq 1 ]; then FIRST=0; else WIFI_CLIENTS="$WIFI_CLIENTS,"; fi
+  WIFI_CLIENTS="$WIFI_CLIENTS{\"mac\":\"$MAC\",\"iface\":\"$IFACE\",\"signal\":\"$SIGNAL\",\"rx_rate\":\"$RX_RATE\",\"tx_rate\":\"$TX_RATE\"}"
+done < /tmp/wifi_clients_raw.txt 2>/dev/null
+
+# ========== WiFi 网络信息 ==========
+WIFI_INFO=""
+FIRST=1
+for IFACE in ra0 rax0 rax1; do
+  INFO_OUTPUT=$(iwinfo $IFACE info 2>/dev/null)
+  [ $? -ne 0 ] && continue
+  
+  ESSID=$(echo "$INFO_OUTPUT" | grep "ESSID" | sed 's/.*"\(.*\)".*/\1/')
+  CHANNEL=$(echo "$INFO_OUTPUT" | grep "Channel" | awk '{print $NF}')
+  MODE=$(echo "$INFO_OUTPUT" | grep "Mode" | awk '{print $2}')
+  TXPOWER=$(echo "$INFO_OUTPUT" | grep "Tx-Power" | awk '{print $2}')
+  
+  [ -z "$ESSID" ] && continue
+  
+  if [ $FIRST -eq 1 ]; then FIRST=0; else WIFI_INFO="$WIFI_INFO,"; fi
+  WIFI_INFO="$WIFI_INFO{\"iface\":\"$IFACE\",\"essid\":\"$ESSID\",\"channel\":\"$CHANNEL\",\"mode\":\"$MODE\",\"txpower\":\"$TXPOWER\"}"
+done
+
+# ========== 输出 JSON ==========
+cat << EOF
+{
+  "uptime": $UPTIME,
+  "load": {
+    "1m": "$LOAD",
+    "5m": "$LOAD5",
+    "15m": "$LOAD15"
+  },
+  "mem": {
+    "total": $MEM_TOTAL,
+    "used": $MEM_USED,
+    "available": $MEM_AVAIL
+  },
+  "storage": {
+    "used": $STOR_USED,
+    "available": $STOR_AVAIL
+  },
+  "conntrack": {
+    "count": $CONNTRACK,
+    "max": $CONNTRACK_MAX
+  },
+  "leases": [$LEASES],
+  "wifi_clients": [$WIFI_CLIENTS],
+  "wifi_info": [$WIFI_INFO]
+}
+EOF
+
+# 清理临时文件
+rm -f /tmp/wifi_clients_raw.txt
