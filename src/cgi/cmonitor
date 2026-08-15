@@ -130,7 +130,7 @@ if [ -f /tmp/cpe_cell.file ] && [ -s /tmp/cpe_cell.file ]; then
   L20=$(sed -n '20p' /tmp/cpe_cell.file)
   L22=$(sed -n '22p' /tmp/cpe_cell.file)
   if [ -n "$L11" ]; then
-    C_NET=$(echo "$L11" | sed 's/"/\\"/g')
+    C_NET="$L11"
     C_QUAL=$(echo "$L12" | tr -d '%')
     C_RSSI=$(echo "$L13" | grep -oE '[-]*[0-9]+')
     C_RSRQ=$(echo "$L14" | grep -oE '[-]*[0-9]+')
@@ -163,6 +163,7 @@ fi
 # ========== 输出 JSON ==========
 cat << EOF
 {
+  "_version": "2.0",
   "uptime": $UPTIME,
   "load": {
     "1m": "$LOAD",
