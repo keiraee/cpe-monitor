@@ -2,13 +2,11 @@
 # CPE Monitor CGI Script
 # 采集系统状态和网络连接信息，输出 JSON
 
-# HTTP 头
 echo "Content-Type: application/json"
 echo "Access-Control-Allow-Origin: *"
 echo "Cache-Control: no-cache"
 echo ""
 
-# ========== 系统信息 ==========
 UPTIME=$(cat /proc/uptime | awk '{print int($1)}')
 LOAD=$(cat /proc/loadavg | awk '{print $1}')
 LOAD5=$(cat /proc/loadavg | awk '{print $2}')
@@ -21,29 +19,22 @@ STOR_AVAIL=$(df /overlay | awk 'NR==2{print $4}')
 CONNTRACK=$(cat /proc/sys/net/netfilter/nf_conntrack_count 2>/dev/null || echo 0)
 CONNTRACK_MAX=$(cat /proc/sys/net/netfilter/nf_conntrack_max 2>/dev/null || echo 0)
 
-# ========== DHCP 租约 ==========
 LEASES=""
 FIRST=1
 while read EXPIRY MAC IP HOSTNAME ID; do
   [ -z "$IP" ] && continue
   [ "$IP" = "*" ] && continue
   if [ $FIRST -eq 1 ]; then FIRST=0; else LEASES="$LEASES,"; fi
-  # 转义 hostname 中的特殊字符
-  HOSTNAME=$(echo "$HOSTNAME" | sed 's/"/\\"/g')
+  HOSTNAME=$(echo "$HOSTNAME" | sed 's/"/\\\"/g')
   [ -z "$HOSTNAME" ] || [ "$HOSTNAME" = "*" ] && HOSTNAME="未知设备"
   LEASES="$LEASES{\"mac\":\"$MAC\",\"ip\":\"$IP\",\"hostname\":\"$HOSTNAME\"}"
 done < /tmp/dhcp.leases 2>/dev/null
 
-# ========== WiFi 接口发现 ==========
-# 动态获取所有无线接口名，避免硬编码
 WIFI_IFACES=$(ubus call network.wireless status 2>/dev/null | jsonfilter -e '@.*.interfaces[*].ifname')
 if [ -z "$WIFI_IFACES" ]; then
-  # fallback: 从 iwinfo 输出中提取接口名
   WIFI_IFACES=$(iwinfo 2>/dev/null | sed -n 's/^\([a-z0-9]*\)  .*/\1/p')
 fi
 
-# ========== WiFi 客户端 ==========
-# 先建立 iface → essid 映射
 IFACE_ESSID_MAP="/tmp/iface_essid_map.txt"
 rm -f "$IFACE_ESSID_MAP"
 for IFACE in $WIFI_IFACES; do
@@ -56,10 +47,8 @@ done
 WIFI_CLIENTS=""
 FIRST=1
 for IFACE in $WIFI_IFACES; do
-  # 查找对应的 SSID
   ESSID=$(grep "^$IFACE " "$IFACE_ESSID_MAP" 2>/dev/null | cut -d' ' -f2-)
   [ -z "$ESSID" ] && ESSID="$IFACE"
-  # 用 awk 解析多行 assoclist 输出，每个客户端占多行
   iwinfo $IFACE assoclist 2>/dev/null | awk -v iface="$ESSID" '
     /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}/ {
       if (MAC != "") print MAC "|" iface "|" SIGNAL "|" RX "|" TX
@@ -74,30 +63,24 @@ for IFACE in $WIFI_IFACES; do
   ' >> /tmp/wifi_clients_raw.txt 2>/dev/null
 done
 
-# 构建 MAC → 主机名 映射（从 DHCP 租约）
 HOSTNAME_MAP="/tmp/mac_hostname_map.txt"
 awk '{print toupper($2), $4}' /tmp/dhcp.leases 2>/dev/null > "$HOSTNAME_MAP" 2>/dev/null
 
-# 组装 JSON（含设备名）
 while IFS='|' read MAC IFACE SIGNAL RX_RATE TX_RATE; do
   [ -z "$MAC" ] && continue
-  # 查找设备名
   HOSTNAME=$(grep -i "^$MAC " "$HOSTNAME_MAP" 2>/dev/null | awk '{print $2}')
   [ -z "$HOSTNAME" ] || [ "$HOSTNAME" = "*" ] && HOSTNAME="未知设备"
   if [ $FIRST -eq 1 ]; then FIRST=0; else WIFI_CLIENTS="$WIFI_CLIENTS,"; fi
   WIFI_CLIENTS="$WIFI_CLIENTS{\"mac\":\"$MAC\",\"iface\":\"$IFACE\",\"signal\":\"$SIGNAL\",\"rx_rate\":\"$RX_RATE\",\"tx_rate\":\"$TX_RATE\",\"hostname\":\"$HOSTNAME\"}"
 done < /tmp/wifi_clients_raw.txt 2>/dev/null
 
-# 清理临时文件
 rm -f "$HOSTNAME_MAP" "$IFACE_ESSID_MAP"
 
-# ========== WiFi 网络信息 ==========
 WIFI_INFO=""
 FIRST=1
 for IFACE in $WIFI_IFACES; do
   INFO_OUTPUT=$(iwinfo $IFACE info 2>/dev/null)
   [ $? -ne 0 ] && continue
-  
   ESSID=$(echo "$INFO_OUTPUT" | grep -oE 'ESSID: ".*"' | sed 's/ESSID: "//;s/"//')
   CHANNEL=$(echo "$INFO_OUTPUT" | grep "Channel" | grep -oE '[0-9]+' | head -1)
   [ -z "$CHANNEL" ] && CHANNEL="N/A"
@@ -105,66 +88,46 @@ for IFACE in $WIFI_IFACES; do
   [ -z "$MODE" ] && MODE="N/A"
   TXPOWER=$(echo "$INFO_OUTPUT" | grep "Tx-Power" | grep -oE '[0-9]+' | head -1)
   [ -z "$TXPOWER" ] && TXPOWER="N/A"
-  
   [ -z "$ESSID" ] && continue
-  
   if [ $FIRST -eq 1 ]; then FIRST=0; else WIFI_INFO="$WIFI_INFO,"; fi
   WIFI_INFO="$WIFI_INFO{\"iface\":\"$IFACE\",\"essid\":\"$ESSID\",\"channel\":\"$CHANNEL\",\"mode\":\"$MODE\",\"txpower\":\"$TXPOWER\"}"
 done
 
-
-# ========== 蜂窝网络信息 ==========
+# 蜂窝网络
 CELL_JSON='{}'
-
 if [ -f /tmp/cpe_cell.file ] && [ -s /tmp/cpe_cell.file ]; then
-  # 文件第11行为空行，数据从第12行开始
   C_NET=$(sed -n '12p' /tmp/cpe_cell.file)
   if [ -n "$C_NET" ]; then
+    # 转义函数
+    esc() { echo "$1" | sed 's/"/\\"/g'; }
+    C_NET=$(esc "$C_NET")
     C_QUAL=$(sed -n '13p' /tmp/cpe_cell.file | tr -d '%')
     C_RSSI=$(sed -n '14p' /tmp/cpe_cell.file | grep -oE '[-]*[0-9]+')
     C_RSRQ=$(sed -n '15p' /tmp/cpe_cell.file | grep -oE '[-]*[0-9]+')
     C_RSCP=$(sed -n '16p' /tmp/cpe_cell.file | grep -oE '[-]*[0-9]+')
     C_SINR=$(sed -n '17p' /tmp/cpe_cell.file | grep -oE '[-]*[0-9]+')
-    C_OPR=$(sed -n '7p' /tmp/cpe_cell.file)
-    C_MCC=$(sed -n '18p' /tmp/cpe_cell.file)
+    C_OPR=$(esc "$(sed -n '7p' /tmp/cpe_cell.file)")
+    C_MCC=$(esc "$(sed -n '18p' /tmp/cpe_cell.file)")
     C_LAC=$(sed -n '19p' /tmp/cpe_cell.file | awk '{print $1}')
-    C_CID=$(sed -n '20p' /tmp/cpe_cell.file)
-    C_BAND=$(sed -n '21p' /tmp/cpe_cell.file)
-    C_PCI=$(sed -n '23p' /tmp/cpe_cell.file)
+    C_CID=$(esc "$(sed -n '20p' /tmp/cpe_cell.file)")
+    C_BAND=$(esc "$(sed -n '21p' /tmp/cpe_cell.file)")
+    C_PCI=$(esc "$(sed -n '23p' /tmp/cpe_cell.file)")
     CELL_JSON="{\"net_type\":\"$C_NET\",\"quality\":\"$C_QUAL\",\"rssi\":\"$C_RSSI\",\"rsrq\":\"$C_RSRQ\",\"rscp\":\"$C_RSCP\",\"sinr\":\"$C_SINR\",\"operator\":\"$C_OPR\",\"mcc_mnc\":\"$C_MCC\",\"lac\":\"$C_LAC\",\"cellid\":\"$C_CID\",\"band\":\"$C_BAND\",\"pci\":\"$C_PCI\"}"
   fi
 fi
 
-# ========== 输出 JSON ==========
 cat << EOF
 {
-  "_version": "2.0",
   "uptime": $UPTIME,
-  "load": {
-    "1m": "$LOAD",
-    "5m": "$LOAD5",
-    "15m": "$LOAD15"
-  },
-  "mem": {
-    "total": $MEM_TOTAL,
-    "used": $MEM_USED,
-    "available": $MEM_AVAIL
-  },
-  "storage": {
-    "used": $STOR_USED,
-    "available": $STOR_AVAIL
-  },
-  "conntrack": {
-    "count": $CONNTRACK,
-    "max": $CONNTRACK_MAX
-  },
+  "load": { "1m": "$LOAD", "5m": "$LOAD5", "15m": "$LOAD15" },
+  "mem": { "total": $MEM_TOTAL, "used": $MEM_USED, "available": $MEM_AVAIL },
+  "storage": { "used": $STOR_USED, "available": $STOR_AVAIL },
+  "conntrack": { "count": $CONNTRACK, "max": $CONNTRACK_MAX },
   "leases": [$LEASES],
   "wifi_clients": [$WIFI_CLIENTS],
   "wifi_info": [$WIFI_INFO],
-  "cellular": $CELL_JSON,
-  "_cell_debug": "$CELL_DBG"
+  "cellular": $CELL_JSON
 }
 EOF
 
-# 清理临时文件
 rm -f /tmp/wifi_clients_raw.txt
