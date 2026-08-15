@@ -116,52 +116,23 @@ done
 # ========== 蜂窝网络信息 ==========
 CELL_JSON='{}'
 
-CELL_DBG=""
-if [ -f /tmp/cpe_cell.file ]; then CELL_DBG="exists"; else CELL_DBG="not_found"; fi
-if [ -s /tmp/cpe_cell.file ]; then CELL_DBG="$CELL_DBG,nonempty"; else CELL_DBG="$CELL_DBG,empty"; fi
-L11=$(sed -n '11p' /tmp/cpe_cell.file)
-CELL_DBG="$CELL_DBG,L11=[$L11]"
-if [ -n "$L11" ]; then
-  L12=$(sed -n '12p' /tmp/cpe_cell.file)
-  L13=$(sed -n '13p' /tmp/cpe_cell.file)
-  L14=$(sed -n '14p' /tmp/cpe_cell.file)
-  L15=$(sed -n '15p' /tmp/cpe_cell.file)
-  L16=$(sed -n '16p' /tmp/cpe_cell.file)
-  L07=$(sed -n '7p' /tmp/cpe_cell.file)
-  L17=$(sed -n '17p' /tmp/cpe_cell.file)
-  L18=$(sed -n '18p' /tmp/cpe_cell.file)
-  L19=$(sed -n '19p' /tmp/cpe_cell.file)
-  L20=$(sed -n '20p' /tmp/cpe_cell.file)
-  L22=$(sed -n '22p' /tmp/cpe_cell.file)
-  if [ -n "$L11" ]; then
-    C_NET="$L11"
-    C_QUAL=$(echo "$L12" | tr -d '%')
-    C_RSSI=$(echo "$L13" | grep -oE '[-]*[0-9]+')
-    C_RSRQ=$(echo "$L14" | grep -oE '[-]*[0-9]+')
-    C_RSCP=$(echo "$L15" | grep -oE '[-]*[0-9]+')
-    C_SINR=$(echo "$L16" | grep -oE '[-]*[0-9]+')
-    C_OPR=$(echo "$L07" | sed 's/"/\\"/g')
-    C_MCC=$(echo "$L17" | sed 's/"/\\"/g')
-    C_LAC=$(echo "$L18" | awk '{print $1}')
-    C_CID=$(echo "$L19" | sed 's/"/\\"/g')
-    C_BAND=$(echo "$L20" | sed 's/"/\\"/g')
-    C_PCI=$(echo "$L22" | sed 's/"/\\"/g')
+if [ -f /tmp/cpe_cell.file ] && [ -s /tmp/cpe_cell.file ]; then
+  # 文件第11行为空行，数据从第12行开始
+  C_NET=$(sed -n '12p' /tmp/cpe_cell.file)
+  if [ -n "$C_NET" ]; then
+    C_QUAL=$(sed -n '13p' /tmp/cpe_cell.file | tr -d '%')
+    C_RSSI=$(sed -n '14p' /tmp/cpe_cell.file | grep -oE '[-]*[0-9]+')
+    C_RSRQ=$(sed -n '15p' /tmp/cpe_cell.file | grep -oE '[-]*[0-9]+')
+    C_RSCP=$(sed -n '16p' /tmp/cpe_cell.file | grep -oE '[-]*[0-9]+')
+    C_SINR=$(sed -n '17p' /tmp/cpe_cell.file | grep -oE '[-]*[0-9]+')
+    C_OPR=$(sed -n '7p' /tmp/cpe_cell.file)
+    C_MCC=$(sed -n '18p' /tmp/cpe_cell.file)
+    C_LAC=$(sed -n '19p' /tmp/cpe_cell.file | awk '{print $1}')
+    C_CID=$(sed -n '20p' /tmp/cpe_cell.file)
+    C_BAND=$(sed -n '21p' /tmp/cpe_cell.file)
+    C_PCI=$(sed -n '23p' /tmp/cpe_cell.file)
     CELL_JSON="{\"net_type\":\"$C_NET\",\"quality\":\"$C_QUAL\",\"rssi\":\"$C_RSSI\",\"rsrq\":\"$C_RSRQ\",\"rscp\":\"$C_RSCP\",\"sinr\":\"$C_SINR\",\"operator\":\"$C_OPR\",\"mcc_mnc\":\"$C_MCC\",\"lac\":\"$C_LAC\",\"cellid\":\"$C_CID\",\"band\":\"$C_BAND\",\"pci\":\"$C_PCI\"}"
   fi
-fi
-
-# Fallback: AT 命令
-if [ "$CELL_JSON" = "{}" ]; then
-  for PORT in /dev/ttyUSB2 /dev/ttyUSB0; do
-    [ -e "$PORT" ] || continue
-    CSQ=$(echo "AT+CSQ" | gcom -d "$PORT" -s /dev/stdin 2>/dev/null | grep '+CSQ:' | grep -oE '[0-9]+' | head -1)
-    if [ -n "$CSQ" ] && [ "$CSQ" -lt 99 ]; then
-      RSSI=$(( -113 + 2 * CSQ ))
-      QUAL=$(( CSQ * 100 / 31 ))
-      CELL_JSON="{\"net_type\":\"蜂窝网络\",\"quality\":\"$QUAL\",\"rssi\":\"$RSSI\"}"
-      break
-    fi
-  done
 fi
 
 # ========== 输出 JSON ==========
