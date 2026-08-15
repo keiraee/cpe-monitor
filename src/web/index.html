@@ -479,7 +479,7 @@
         this.conntrack(d.conntrack);
         this.wifiInfo(d.wifi_info);
         this.leases(d.leases);
-        this.clients(d.wifi_clients);
+        this.clients(d.wifi_clients, d.leases);
         this.cellular(d.cellular);
         this.timestamp();
       },
@@ -555,11 +555,15 @@
           </tr>
         `).join('');
       },
-      clients(clients) {
+      clients(clients, leases) {
         clients = clients || [];
         document.getElementById('clientCount').textContent = clients.length;
         const tb = document.getElementById('clientsBody');
         if (!clients.length) { tb.innerHTML = '<tr><td colspan="6" class="empty-state">暂无客户端</td></tr>'; return; }
+        const hostByMac = {};
+        (leases || []).forEach(l => {
+          if (l && l.mac) hostByMac[String(l.mac).toUpperCase()] = l.hostname;
+        });
         tb.innerHTML = clients.map(c => {
           const s = parseInt(c.signal, 10);
           let cls = '', txt = '未知';
@@ -568,13 +572,19 @@
             else if (s >= -70) { cls = 'signal-medium'; txt = '中'; }
             else { cls = 'signal-weak'; txt = '弱'; }
           }
+          const mac = (c.mac || '').toUpperCase();
+          let hostname = c.hostname;
+          if (!hostname || hostname === '未知设备') hostname = hostByMac[mac] || '未知设备';
+          const signal = (c.signal && c.signal !== 'N/A') ? `${this.esc(c.signal)} dBm · ${txt}` : '—';
+          const rx = (c.rx_rate && c.rx_rate !== 'N/A') ? `${this.esc(c.rx_rate)} Mbps` : '—';
+          const tx = (c.tx_rate && c.tx_rate !== 'N/A') ? `${this.esc(c.tx_rate)} Mbps` : '—';
           return `<tr>
-            <td>${this.esc(c.hostname || '未知设备')}</td>
+            <td>${this.esc(hostname)}</td>
             <td><code>${this.esc(c.mac)}</code></td>
-            <td>${this.esc(c.iface)}</td>
-            <td><span class="signal-badge ${cls}">${this.esc(c.signal)} dBm · ${txt}</span></td>
-            <td>${this.esc(c.rx_rate)} Mbps</td>
-            <td>${this.esc(c.tx_rate)} Mbps</td>
+            <td>${this.esc(c.iface || '—')}</td>
+            <td><span class="signal-badge ${cls}">${signal}</span></td>
+            <td>${rx}</td>
+            <td>${tx}</td>
           </tr>`;
         }).join('');
       },

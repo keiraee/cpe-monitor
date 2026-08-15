@@ -19,11 +19,9 @@ int_or_zero() {
 
 WIFI_RAW="/tmp/cmonitor.$$.wifi"
 ESSID_MAP="/tmp/cmonitor.$$.essid"
-HOST_MAP="/tmp/cmonitor.$$.hosts"
-trap 'rm -f "$WIFI_RAW" "$ESSID_MAP" "$HOST_MAP"' EXIT
+trap 'rm -f "$WIFI_RAW" "$ESSID_MAP"' EXIT
 : > "$WIFI_RAW"
 : > "$ESSID_MAP"
-: > "$HOST_MAP"
 
 UPTIME=$(awk '{print int($1)}' /proc/uptime 2>/dev/null)
 LOAD=$(awk '{print $1}' /proc/loadavg 2>/dev/null)
@@ -98,43 +96,35 @@ for IFACE in $WIFI_IFACES; do
       ESSID="$RAW_ESSID"
     fi
   fi
-  printf '%s\t%s\n' "$IFACE" "$ESSID" >> "$ESSID_MAP"
+  printf '%s %s\n' "$IFACE" "$ESSID" >> "$ESSID_MAP"
 done
 
 for IFACE in $WIFI_IFACES; do
-  ESSID=$(awk -F '\t' -v iface="$IFACE" '$1 == iface {print $2; exit}' "$ESSID_MAP")
+  ESSID=$(awk -v iface="$IFACE" '$1 == iface { $1=""; sub(/^ /, ""); print; exit }' "$ESSID_MAP")
   [ -n "$ESSID" ] || ESSID="$IFACE"
-  ESSID="$ESSID" iwinfo "$IFACE" assoclist 2>/dev/null | awk '
-    BEGIN { iface = ENVIRON["ESSID"] }
+  ESSID=$(printf '%s' "$ESSID" | tr '|' '/')
+  iwinfo "$IFACE" assoclist 2>/dev/null | awk -v iface="$ESSID" '
     /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}/ {
-      if (MAC != "") print MAC "\t" iface "\t" SIGNAL "\t" RX "\t" TX
+      if (MAC != "") print MAC "|" iface "|" SIGNAL "|" RX "|" TX
       MAC = $1
       match($0, /-[0-9]+/)
-      SIGNAL = (RSTART ? substr($0, RSTART, RLENGTH) : "")
+      SIGNAL = (RSTART ? substr($0, RSTART, RLENGTH) : "N/A")
       RX = "N/A"; TX = "N/A"
     }
     /RX:/ { match($0, /[0-9.]+ M[Bb]it\/s/); if (RSTART) RX = substr($0, RSTART, RLENGTH-7) }
     /TX:/ { match($0, /[0-9.]+ M[Bb]it\/s/); if (RSTART) TX = substr($0, RSTART, RLENGTH-7) }
-    END { if (MAC != "") print MAC "\t" iface "\t" SIGNAL "\t" RX "\t" TX }
+    END { if (MAC != "") print MAC "|" iface "|" SIGNAL "|" RX "|" TX }
   ' >> "$WIFI_RAW"
 done
 
-if [ -f /tmp/dhcp.leases ]; then
-  awk '{
-    mac = toupper($2)
-    hn = ""
-    if (NF < 4) next
-    if (NF == 4) hn = $4
-    else { for (i = 4; i < NF; i++) hn = hn (i > 4 ? " " : "") $i }
-    print mac "\t" hn
-  }' /tmp/dhcp.leases > "$HOST_MAP"
-fi
-
 WIFI_CLIENTS=""
 FIRST=1
-while IFS="$(printf '\t')" read -r MAC IFACE SIGNAL RX_RATE TX_RATE; do
+while IFS='|' read -r MAC IFACE SIGNAL RX_RATE TX_RATE; do
   [ -z "$MAC" ] && continue
-  HOSTNAME=$(awk -F '\t' -v mac="$MAC" 'toupper($1) == toupper(mac) {print $2; exit}' "$HOST_MAP")
+  HOSTNAME=""
+  if [ -f /tmp/dhcp.leases ]; then
+    HOSTNAME=$(awk -v mac="$MAC" 'BEGIN { mac = toupper(mac) } toupper($2) == mac { print $4; exit }' /tmp/dhcp.leases)
+  fi
   HOSTNAME=$(json_esc "$HOSTNAME")
   [ -z "$HOSTNAME" ] || [ "$HOSTNAME" = "*" ] && HOSTNAME="未知设备"
   MAC=$(json_esc "$MAC")
