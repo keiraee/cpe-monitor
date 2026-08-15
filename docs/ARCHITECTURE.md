@@ -8,11 +8,11 @@
 │  ┌─────────────────────────────────────────────┐ │
 │  │           前端 (index.html)                  │ │
 │  │  - HTML5 + CSS3 + Vanilla JS                │ │
-│  │  - Fetch API 轮询                           │ │
+│  │  - Fetch API 轮询（失败指数退避）            │ │
 │  │  - 响应式布局                               │ │
 │  └──────────────────┬──────────────────────────┘ │
 └─────────────────────┼───────────────────────────┘
-                      │ HTTP GET /cgi-bin/monitor
+                      │ HTTP GET /cgi-bin/cmonitor
                       ▼
 ┌─────────────────────────────────────────────────┐
 │              ImmortalWrt (CPE)                   │
@@ -23,7 +23,7 @@
 │  └──────────────────┬──────────────────────────┘ │
 │                     │                            │
 │  ┌──────────────────▼──────────────────────────┐ │
-│  │         CGI 脚本 (monitor)                   │ │
+│  │         CGI 脚本 (cmonitor)                  │ │
 │  │  - Shell 脚本                               │ │
 │  │  - 采集系统数据                             │ │
 │  │  - 输出 JSON                                │ │
@@ -31,7 +31,7 @@
 │                     │                            │
 │  ┌──────────────────▼──────────────────────────┐ │
 │  │           系统数据源                         │ │
-│  │  - /proc (系统信息)                         │ │
+│  │  - /proc/meminfo、/proc/uptime、/proc/loadavg │ │
 │  │  - /tmp/dhcp.leases (DHCP 租约)             │ │
 │  │  - iwinfo (WiFi 客户端)                     │ │
 │  │  - ubus (系统服务)                          │ │
@@ -42,7 +42,7 @@
 ## 数据流
 
 ```
-浏览器 ──HTTP GET──> uhttpd ──CGI──> monitor.sh
+浏览器 ──HTTP GET──> uhttpd ──CGI──> cmonitor
                                          │
                                          ▼
                                     读取系统数据
@@ -51,12 +51,12 @@
                                     生成 JSON
                                          │
                                          ▼
-浏览器 <──JSON 响应── uhttpd <──stdout── monitor.sh
+浏览器 <──JSON 响应── uhttpd <──stdout── cmonitor
 ```
 
 ## API 设计
 
-### GET /cgi-bin/monitor
+### GET /cgi-bin/cmonitor
 
 返回系统状态和连接信息的 JSON 数据。
 
@@ -65,7 +65,7 @@
 ```json
 {
   "uptime": 12345,
-  "load": "0.50",
+  "load": { "1m": "0.50", "5m": "0.40", "15m": "0.30" },
   "mem": {
     "total": 491552,
     "used": 179944,
@@ -90,7 +90,10 @@
     {
       "mac": "AA:BB:CC:DD:EE:FF",
       "iface": "rax0",
-      "signal": "-45"
+      "signal": "-45",
+      "rx_rate": "86.7",
+      "tx_rate": "72.2",
+      "hostname": "iPhone"
     }
   ],
   "wifi_info": [
@@ -98,9 +101,24 @@
       "iface": "ra0",
       "essid": "v6",
       "channel": "6",
-      "mode": "Master"
+      "mode": "Master",
+      "txpower": "20"
     }
-  ]
+  ],
+  "cellular": {
+    "net_type": "LTE",
+    "quality": "80",
+    "rssi": "-70",
+    "rsrq": "-8",
+    "rscp": "-90",
+    "sinr": "15",
+    "operator": "CMCC",
+    "mcc_mnc": "46000",
+    "lac": "12345",
+    "cellid": "67890",
+    "band": "B3",
+    "pci": "100"
+  }
 }
 ```
 
@@ -127,7 +145,8 @@ index.html
 - 默认 5 秒自动刷新
 - 支持配置刷新间隔（1s/3s/5s/10s/30s）
 - 页面不可见时暂停刷新（节省资源）
-- 网络错误时自动重试
+- 进行中的请求会合并；刷新不会被丢弃
+- 网络错误时按间隔指数退避重试，上限 30 秒
 
 ## 资源占用估算
 
@@ -144,6 +163,9 @@ index.html
 2. 无用户认证（局域网信任模型）
 3. 不暴露敏感信息（如密码、密钥）
 4. 使用 HTTPS（可选）
+5. 前端对主机名/SSID 等字段做 HTML 转义
+6. CGI 对 JSON 字符串转义；临时文件使用 PID 隔离
+7. 页面不依赖外网字体，WAN 断开时仍可打开
 
 ## 浏览器兼容性
 

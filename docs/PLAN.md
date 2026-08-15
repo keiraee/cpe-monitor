@@ -53,7 +53,7 @@ cpe-monitor/
 │   └── ARCHITECTURE.md  # 技术架构文档
 ├── src/
 │   ├── cgi/
-│   │   └── monitor      # CGI 监控脚本
+│   │   └── cmonitor     # CGI 监控脚本
 │   └── web/
 │       └── index.html   # 前端页面
 ├── scripts/
