@@ -116,8 +116,12 @@ done
 # ========== 蜂窝网络信息 ==========
 CELL_JSON='{}'
 
-if [ -f /tmp/cpe_cell.file ] && [ -s /tmp/cpe_cell.file ]; then
-  L11=$(sed -n '11p' /tmp/cpe_cell.file)
+CELL_DBG=""
+if [ -f /tmp/cpe_cell.file ]; then CELL_DBG="exists"; else CELL_DBG="not_found"; fi
+if [ -s /tmp/cpe_cell.file ]; then CELL_DBG="$CELL_DBG,nonempty"; else CELL_DBG="$CELL_DBG,empty"; fi
+L11=$(sed -n '11p' /tmp/cpe_cell.file)
+CELL_DBG="$CELL_DBG,L11=[$L11]"
+if [ -n "$L11" ]; then
   L12=$(sed -n '12p' /tmp/cpe_cell.file)
   L13=$(sed -n '13p' /tmp/cpe_cell.file)
   L14=$(sed -n '14p' /tmp/cpe_cell.file)
@@ -186,7 +190,8 @@ cat << EOF
   "leases": [$LEASES],
   "wifi_clients": [$WIFI_CLIENTS],
   "wifi_info": [$WIFI_INFO],
-  "cellular": $CELL_JSON
+  "cellular": $CELL_JSON,
+  "_cell_debug": "$CELL_DBG"
 }
 EOF
 
